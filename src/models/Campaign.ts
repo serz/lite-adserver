@@ -3,7 +3,7 @@
  */
 
 export interface Campaign {
-  id: string;
+  id: number;
   name: string;
   redirect_url: string;
   start_date: number;
@@ -18,9 +18,9 @@ export type CampaignStatus = 'active' | 'paused' | 'archived';
 export type TargetingMethod = 'whitelist' | 'blacklist';
 
 export interface TargetingRule {
-  id: string;
-  campaign_id: string;
-  targeting_rule_type_id: string;
+  id: number;
+  campaign_id: number;
+  targeting_rule_type_id: number;
   targeting_method: TargetingMethod;
   rule: string;
   weight: number;
@@ -33,7 +33,7 @@ export interface CampaignWithDetails extends Campaign {
 }
 
 export interface CampaignStats {
-  campaign_id: string;
+  campaign_id: number;
   total_clicks: number;
   clicks_by_day: {
     date: string;
@@ -51,7 +51,7 @@ export interface CreateCampaignRequest {
   start_date: number;
   end_date?: number;
   targeting_rules: {
-    targeting_rule_type_id: string;
+    targeting_rule_type_id: number;
     targeting_method: TargetingMethod;
     rule: string;
     weight?: number;

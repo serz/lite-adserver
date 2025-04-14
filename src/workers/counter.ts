@@ -7,6 +7,39 @@
  * real-time analytics that don't require persistence.
  */
 
+// Interface for impression data
+interface ImpressionData {
+  campaignId: number;
+  zoneId?: number;
+  userId?: string;
+  timestamp?: number;
+}
+
+// Interface for click data
+interface ClickData {
+  campaignId: number;
+  zoneId?: number;
+  userId?: string;
+  timestamp?: number;
+}
+
+// Interface for frequency capping check
+interface CappingCheckData {
+  campaignId: number;
+  userId: string;
+  cappingValue?: number;
+}
+
+// Interface for statistics response
+interface StatsResponse {
+  campaignId: string | null;
+  zoneId?: string | null;
+  date?: string | null;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+}
+
 export class CounterDO implements DurableObject {
   private state: DurableObjectState;
   
@@ -23,11 +56,11 @@ export class CounterDO implements DurableObject {
       
       switch (action) {
         case 'impression':
-          return await this.recordImpression(data);
+          return await this.recordImpression(data as ImpressionData);
         case 'click':
-          return await this.recordClick(data);
+          return await this.recordClick(data as ClickData);
         case 'check-cap':
-          return await this.checkCap(data);
+          return await this.checkCap(data as CappingCheckData);
         default:
           return new Response('Unknown action', { status: 400 });
       }
@@ -46,7 +79,7 @@ export class CounterDO implements DurableObject {
   /**
    * Record an impression for a campaign
    */
-  private async recordImpression(data: any): Promise<Response> {
+  private async recordImpression(data: ImpressionData): Promise<Response> {
     const { campaignId, zoneId, userId, timestamp = Date.now() } = data;
     
     if (!campaignId) {
@@ -79,7 +112,7 @@ export class CounterDO implements DurableObject {
     // If user ID is provided, track user-specific impressions for capping
     if (userId) {
       const userKey = `user:${userId}:campaign:${campaignId}:impressions`;
-      const userImpressions = await this.state.storage.get(userKey) || [];
+      const userImpressions: number[] = await this.state.storage.get(userKey) || [];
       userImpressions.push(timestamp);
       
       // Only keep impressions from the last 24 hours
@@ -96,7 +129,7 @@ export class CounterDO implements DurableObject {
   /**
    * Record a click for a campaign
    */
-  private async recordClick(data: any): Promise<Response> {
+  private async recordClick(data: ClickData): Promise<Response> {
     const { campaignId, zoneId, userId, timestamp = Date.now() } = data;
     
     if (!campaignId) {
@@ -129,7 +162,7 @@ export class CounterDO implements DurableObject {
     // If user ID is provided, track user-specific clicks
     if (userId) {
       const userKey = `user:${userId}:campaign:${campaignId}:clicks`;
-      const userClicks = await this.state.storage.get(userKey) || [];
+      const userClicks: number[] = await this.state.storage.get(userKey) || [];
       userClicks.push(timestamp);
       await this.state.storage.put(userKey, userClicks);
     }
@@ -140,7 +173,7 @@ export class CounterDO implements DurableObject {
   /**
    * Check if a user has reached frequency cap for a campaign
    */
-  private async checkCap(data: any): Promise<Response> {
+  private async checkCap(data: CappingCheckData): Promise<Response> {
     const { campaignId, userId, cappingValue = 10 } = data;
     
     if (!campaignId || !userId) {
@@ -148,7 +181,7 @@ export class CounterDO implements DurableObject {
     }
     
     const userKey = `user:${userId}:campaign:${campaignId}:impressions`;
-    const userImpressions = await this.state.storage.get(userKey) || [];
+    const userImpressions: number[] = await this.state.storage.get(userKey) || [];
     
     // Only count impressions from the last 24 hours
     const recentImpressions = userImpressions.filter(
@@ -205,14 +238,16 @@ export class CounterDO implements DurableObject {
     
     ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
     
-    return new Response(JSON.stringify({
+    const response: StatsResponse = {
       campaignId,
       zoneId,
       date,
       impressions,
       clicks,
       ctr
-    }), {
+    };
+    
+    return new Response(JSON.stringify(response), {
       status: 200,
       headers: { 'content-type': 'application/json' }
     });

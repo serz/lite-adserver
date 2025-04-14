@@ -6,6 +6,7 @@
 import { TargetingRule } from '../models/TargetingRule';
 import { CounterDO } from './counter';
 import { TargetingMethod } from '../models/Campaign';
+import { parseAndValidateId, parseId, isValidId } from '../utils/idValidation';
 
 // Re-export the CounterDO class needed by the Durable Object binding
 export { CounterDO };
@@ -19,7 +20,7 @@ export interface Env {
 
 // Campaign with targeting rules for selection
 interface CampaignDetail {
-  id: string;
+  id: number;
   name: string;
   redirect_url: string;
   status: string;
@@ -71,7 +72,7 @@ async function handleAdServing(request: Request, env: Env, ctx: ExecutionContext
     ? url.pathname.slice(0, -1) 
     : url.pathname;
     
-  const zoneId = path.split('/').pop();
+  const zoneId = path.split('/').pop() || '';
   
   if (!zoneId) {
     return new Response('Zone ID required', { status: 400 });
@@ -124,8 +125,8 @@ async function handleTracking(request: Request, env: Env, ctx: ExecutionContext)
     
   const parts = path.split('/');
   const trackType = parts[2]; // /track/{type}/{id}
-  const campaignId = parts[3];
-  const zoneId = parts[4];
+  const campaignId = parts[3] || '';
+  const zoneId = parts[4] || '';
   
   if (!trackType || !campaignId) {
     return new Response('Invalid tracking URL', { status: 400 });
@@ -169,9 +170,8 @@ async function handleTracking(request: Request, env: Env, ctx: ExecutionContext)
 async function fetchEligibleCampaigns(db: D1Database, zoneId: string, request: Request): Promise<CampaignDetail[]> {
   try {
     // Convert zoneId to number since we're using numeric IDs
-    const zoneIdNum = parseInt(zoneId, 10);
-    if (isNaN(zoneIdNum)) {
-      console.error('Invalid zoneId format:', zoneId);
+    const zoneIdNum = parseAndValidateId(zoneId, 'zone');
+    if (zoneIdNum === null) {
       return [];
     }
 
@@ -201,7 +201,7 @@ async function fetchEligibleCampaigns(db: D1Database, zoneId: string, request: R
     }
 
     // Group targeting rules by campaign
-    const campaignMap = new Map<string, CampaignDetail>();
+    const campaignMap = new Map<number, CampaignDetail>();
     
     for (const row of result.results) {
       // Type assertion to access properties
@@ -217,7 +217,7 @@ async function fetchEligibleCampaigns(db: D1Database, zoneId: string, request: R
         weight: number;
       };
       
-      const campaignId = rowData.id.toString();
+      const campaignId = rowData.id;
       
       if (!campaignMap.has(campaignId)) {
         campaignMap.set(campaignId, {
@@ -229,18 +229,19 @@ async function fetchEligibleCampaigns(db: D1Database, zoneId: string, request: R
         });
       }
       
-      const campaign = campaignMap.get(campaignId)!;
-      
-      campaign.targeting_rules.push({
-        id: rowData.rule_id.toString(),
-        campaign_id: campaignId,
-        targeting_rule_type_id: rowData.targeting_rule_type_id.toString(),
-        targeting_method: rowData.targeting_method as TargetingMethod,
-        rule: rowData.rule,
-        weight: rowData.weight,
-        created_at: 0, // We don't need these for selection
-        updated_at: 0  // We don't need these for selection
-      });
+      const campaign = campaignMap.get(campaignId);
+      if (campaign) {
+        campaign.targeting_rules.push({
+          id: rowData.rule_id,
+          campaign_id: campaignId,
+          targeting_rule_type_id: rowData.targeting_rule_type_id,
+          targeting_method: rowData.targeting_method as TargetingMethod,
+          rule: rowData.rule,
+          weight: rowData.weight,
+          created_at: 0, // We don't need these for selection
+          updated_at: 0  // We don't need these for selection
+        });
+      }
     }
     
     return Array.from(campaignMap.values());
@@ -262,13 +263,13 @@ function selectCampaign(campaigns: CampaignDetail[], request: Request): Campaign
   // For example, filter by geo, device_type, etc.
   
   // For now, just select the first campaign as demo
-  return campaigns[0];
+  return campaigns[0] || null;
 }
 
 /**
  * Generate a tracking URL for click redirection
  */
-function generateTrackingUrl(request: Request, campaignId: string, zoneId: string): string {
+function generateTrackingUrl(request: Request, campaignId: number, zoneId: string): string {
   const baseUrl = new URL(request.url);
   // Ensure no trailing slash in the pathname
   baseUrl.pathname = `/track/click/${campaignId}/${zoneId}`;
@@ -280,8 +281,8 @@ function generateTrackingUrl(request: Request, campaignId: string, zoneId: strin
  * Record a click in the database
  */
 async function recordClick(db: D1Database, clickData: {
-  campaign_id: string,
-  zone_id: string,
+  campaign_id: string | number,
+  zone_id: string | number,
   ip?: string,
   user_agent?: string,
   referer?: string,
@@ -291,10 +292,10 @@ async function recordClick(db: D1Database, clickData: {
 }): Promise<void> {
   try {
     // Convert IDs to numbers for numeric IDs
-    const campaignIdNum = parseInt(clickData.campaign_id, 10);
-    const zoneIdNum = parseInt(clickData.zone_id, 10);
+    const campaignIdNum = parseId(clickData.campaign_id);
+    const zoneIdNum = parseId(clickData.zone_id);
     
-    if (isNaN(campaignIdNum) || isNaN(zoneIdNum)) {
+    if (!isValidId(campaignIdNum) || !isValidId(zoneIdNum)) {
       console.error('Invalid ID format in click data:', clickData);
       return;
     }
@@ -313,7 +314,7 @@ async function recordClick(db: D1Database, clickData: {
       clickData.timestamp
     ).run();
     
-    console.log('Click recorded for campaign', clickData.campaign_id, 'zone', clickData.zone_id);
+    console.log('Click recorded for campaign', campaignIdNum, 'zone', zoneIdNum);
   } catch (error) {
     console.error('Error recording click:', error);
   }
@@ -335,12 +336,11 @@ function detectDeviceType(userAgent: string): string {
 /**
  * Fetch zone details
  */
-async function fetchZone(db: D1Database, zoneId: string): Promise<{ id: string; traffic_back_url?: string } | null> {
+async function fetchZone(db: D1Database, zoneId: string): Promise<{ id: number; traffic_back_url?: string } | null> {
   try {
     // Convert zoneId to number for numeric ID
-    const zoneIdNum = parseInt(zoneId, 10);
-    if (isNaN(zoneIdNum)) {
-      console.error('Invalid zoneId format:', zoneId);
+    const zoneIdNum = parseAndValidateId(zoneId, 'zone');
+    if (zoneIdNum === null) {
       return null;
     }
     
@@ -358,7 +358,7 @@ async function fetchZone(db: D1Database, zoneId: string): Promise<{ id: string; 
     const zone = result as { id: number; traffic_back_url?: string };
     
     return {
-      id: zone.id.toString(),
+      id: zone.id,
       traffic_back_url: zone.traffic_back_url
     };
   } catch (error) {
@@ -370,12 +370,11 @@ async function fetchZone(db: D1Database, zoneId: string): Promise<{ id: string; 
 /**
  * Fetch campaign details by ID
  */
-async function fetchCampaign(db: D1Database, campaignId: string): Promise<{ id: string; redirect_url: string } | null> {
+async function fetchCampaign(db: D1Database, campaignId: string | number): Promise<{ id: number; redirect_url: string } | null> {
   try {
-    // Convert campaignId to number for numeric ID
-    const campaignIdNum = parseInt(campaignId, 10);
-    if (isNaN(campaignIdNum)) {
-      console.error('Invalid campaignId format:', campaignId);
+    // Convert campaignId to number if it's a string
+    const campaignIdNum = parseAndValidateId(campaignId, 'campaign');
+    if (campaignIdNum === null) {
       return null;
     }
 
@@ -393,7 +392,7 @@ async function fetchCampaign(db: D1Database, campaignId: string): Promise<{ id: 
     const campaign = result as { id: number; redirect_url: string };
     
     return {
-      id: campaign.id.toString(),
+      id: campaign.id,
       redirect_url: campaign.redirect_url
     };
   } catch (error) {

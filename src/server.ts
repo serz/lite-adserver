@@ -42,7 +42,7 @@ export function createServer(): FastifyInstance {
  */
 if (require.main === module) {
   const server = createServer();
-  const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  const port = process.env['PORT'] ? parseInt(process.env['PORT'], 10) : 3000;
   
   server.listen({ port, host: '0.0.0.0' }, (err) => {
     if (err) {

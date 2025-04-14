@@ -2,18 +2,19 @@
  * Targeting Rule models
  */
 import { TargetingMethod } from './Campaign';
+import { parseIdList } from '../utils/idValidation';
 
 export interface TargetingRuleType {
-  id: string;
+  id: number;
   name: string;
   description?: string;
   created_at: number;
 }
 
 export interface TargetingRule {
-  id: string;
-  campaign_id: string;
-  targeting_rule_type_id: string;
+  id: number;
+  campaign_id: number;
+  targeting_rule_type_id: number;
   targeting_method: TargetingMethod;
   rule: string;
   weight: number;
@@ -22,8 +23,8 @@ export interface TargetingRule {
 }
 
 export interface CreateTargetingRuleRequest {
-  campaign_id: string;
-  targeting_rule_type_id: string;
+  campaign_id: number;
+  targeting_rule_type_id: number;
   targeting_method: TargetingMethod;
   rule: string;
   weight?: number;
@@ -35,12 +36,13 @@ export interface UpdateTargetingRuleRequest {
   weight?: number;
 }
 
-// Predefined rule types - should match values in migration
+// Predefined rule types - match the values used in the database schema
+// These are now the sequence IDs (1-4) that correspond to the rule types in the database
 export const TARGETING_RULE_TYPES = {
-  GEO: 'geo',
-  DEVICE_TYPE: 'device_type',
-  CAPPING: 'capping',
-  ZONE_ID: 'zone_id'
+  GEO: 1, // 'Geographic Location'
+  DEVICE_TYPE: 2, // 'Device Type'
+  CAPPING: 3, // 'Frequency Capping'
+  ZONE_ID: 4  // 'Zone ID'
 };
 
 // Helper functions for rule parsing
@@ -56,6 +58,6 @@ export function parseCappingRule(rule: string): number {
   return parseInt(rule, 10);
 }
 
-export function parseZoneIdRule(rule: string): string[] {
-  return rule.split(',').map(zoneId => zoneId.trim());
+export function parseZoneIdRule(rule: string): number[] {
+  return parseIdList(rule);
 } 

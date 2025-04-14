@@ -3,7 +3,7 @@
  */
 
 export interface Zone {
-  id: string;
+  id: number;
   name: string;
   site_url?: string;
   traffic_back_url?: string;
@@ -15,10 +15,10 @@ export interface Zone {
 export type ZoneStatus = 'active' | 'inactive';
 
 export interface ZoneStats {
-  zone_id: string;
+  zone_id: number;
   total_clicks: number;
   campaign_stats: {
-    campaign_id: string;
+    campaign_id: number;
     campaign_name: string;
     clicks: number;
   }[];
