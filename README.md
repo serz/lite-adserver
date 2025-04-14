@@ -2,7 +2,9 @@
 
 A scalable, cost-efficient ad serving solution built on Cloudflare's edge infrastructure.
 
-![Ad Server Banner](https://placehold.co/1200x400/0033cc/FFFFFF/png?text=Lite+Ad+Server&font=montserrat)
+<p align="center">
+  <img src="docs/images/light-adserver-hero.png" alt="Ad Server Banner" width="70%" />
+</p>
 
 ## Overview
 
