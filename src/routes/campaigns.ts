@@ -2,12 +2,19 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { Campaign, CampaignStatus, CreateCampaignRequest } from '../models/Campaign';
 import { TargetingRule, TARGETING_RULE_TYPES } from '../models/TargetingRule';
 
+// Type for D1 database environment
+interface Env {
+  DB: D1Database;
+}
+
 /**
  * Campaign routes
  */
 export async function campaignRoutes(fastify: FastifyInstance) {
   /**
    * Get all campaigns
+   * 
+   * Returns a paginated list of campaigns that can be filtered by status
    */
   fastify.get('/', {
     schema: {
@@ -17,6 +24,8 @@ export async function campaignRoutes(fastify: FastifyInstance) {
           status: { type: 'string', enum: ['active', 'paused', 'archived'] },
           limit: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
           offset: { type: 'integer', minimum: 0, default: 0 },
+          sort: { type: 'string', enum: ['name', 'created_at', 'start_date'], default: 'created_at' },
+          order: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
         },
       },
       response: {
@@ -28,8 +37,9 @@ export async function campaignRoutes(fastify: FastifyInstance) {
               items: {
                 type: 'object',
                 properties: {
-                  id: { type: 'string' },
+                  id: { type: 'integer' },
                   name: { type: 'string' },
+                  redirect_url: { type: 'string' },
                   status: { type: 'string' },
                   start_date: { type: 'integer' },
                   end_date: { type: 'integer' },
@@ -38,28 +48,140 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                 },
               },
             },
-            total: { type: 'integer' },
+            pagination: {
+              type: 'object',
+              properties: {
+                total: { type: 'integer' },
+                limit: { type: 'integer' },
+                offset: { type: 'integer' },
+                has_more: { type: 'boolean' },
+              },
+            },
+          },
+        },
+        400: {
+          type: 'object',
+          properties: {
+            error: { type: 'string' },
+          },
+        },
+        500: {
+          type: 'object',
+          properties: {
+            error: { type: 'string' },
           },
         },
       },
     },
   }, async (request, reply) => {
-    // This would normally query from D1 database
-    // For now, return a mock response
-    return {
-      campaigns: [
-        {
-          id: 'campaign1',
-          name: 'Test Campaign',
-          status: 'active',
-          start_date: Date.now(),
-          end_date: Date.now() + 30 * 24 * 60 * 60 * 1000,
-          created_at: Date.now(),
-          updated_at: Date.now(),
-        },
-      ],
-      total: 1,
-    };
+    try {
+      // Get query parameters
+      const { status, limit = 20, offset = 0, sort = 'created_at', order = 'desc' } = request.query as {
+        status?: CampaignStatus;
+        limit?: number;
+        offset?: number;
+        sort?: string;
+        order?: 'asc' | 'desc';
+      };
+      
+      // Access the D1 database
+      const env = fastify.d1Env as Env | undefined;
+      
+      // If we have D1 access, query the database
+      if (env?.DB) {
+        // Build the SQL query
+        let sql = 'SELECT * FROM campaigns';
+        const params: any[] = [];
+        
+        // Add status filter if provided
+        if (status) {
+          sql += ' WHERE status = ?';
+          params.push(status);
+        }
+        
+        // Add sorting
+        sql += ` ORDER BY ${sort} ${order}`;
+        
+        // Add pagination
+        sql += ' LIMIT ? OFFSET ?';
+        params.push(limit, offset);
+        
+        // Count total for pagination
+        let countSql = 'SELECT COUNT(*) as total FROM campaigns';
+        if (status) {
+          countSql += ' WHERE status = ?';
+        }
+        
+        // Execute the queries
+        const [campaignsResult, countResult] = await Promise.all([
+          env.DB.prepare(sql).bind(...params).all(),
+          env.DB.prepare(countSql).bind(status || []).get(),
+        ]);
+        
+        // Handle database error
+        if (campaignsResult.error) {
+          throw new Error(`Database error: ${campaignsResult.error}`);
+        }
+        
+        const campaigns = campaignsResult.results as Campaign[];
+        const total = (countResult.results as { total: number }).total;
+        
+        return {
+          campaigns,
+          pagination: {
+            total,
+            limit,
+            offset,
+            has_more: offset + limit < total,
+          },
+        };
+      } else {
+        // Fallback to mock data when no D1 is available (for development/testing)
+        const mockCampaigns = [
+          {
+            id: 1,
+            name: 'Summer Sale',
+            redirect_url: 'https://example.com/summer',
+            status: 'active' as CampaignStatus,
+            start_date: Date.now(),
+            end_date: Date.now() + 30 * 24 * 60 * 60 * 1000,
+            created_at: Date.now() - 5 * 24 * 60 * 60 * 1000,
+            updated_at: Date.now() - 2 * 24 * 60 * 60 * 1000,
+          },
+          {
+            id: 2,
+            name: 'Holiday Promotion',
+            redirect_url: 'https://example.com/holiday',
+            status: 'paused' as CampaignStatus,
+            start_date: Date.now() + 60 * 24 * 60 * 60 * 1000,
+            end_date: Date.now() + 90 * 24 * 60 * 60 * 1000,
+            created_at: Date.now() - 10 * 24 * 60 * 60 * 1000,
+            updated_at: Date.now() - 3 * 24 * 60 * 60 * 1000,
+          },
+        ];
+        
+        // Filter by status if provided
+        const filteredCampaigns = status 
+          ? mockCampaigns.filter(campaign => campaign.status === status)
+          : mockCampaigns;
+        
+        return {
+          campaigns: filteredCampaigns.slice(offset, offset + limit),
+          pagination: {
+            total: filteredCampaigns.length,
+            limit,
+            offset,
+            has_more: offset + limit < filteredCampaigns.length,
+          },
+        };
+      }
+    } catch (error) {
+      request.log.error(error);
+      reply.code(500);
+      return {
+        error: 'An error occurred fetching campaigns',
+      };
+    }
   });
 
   /**

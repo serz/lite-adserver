@@ -2,6 +2,10 @@ name = "lite-adserver"
 main = "src/workers/index.ts"
 compatibility_date = "2023-10-30"
 
+# Environment variables
+[vars]
+API_KEY = "test-api-key-1234567890"
+
 # D1 Database for campaign and zone metadata
 [[d1_databases]]
 binding = "DB"
@@ -20,9 +24,11 @@ new_classes = ["CounterDO"]
 # Define environments
 [env.production]
 # Production-specific settings
+vars = { API_KEY = "production-api-key-secure" }
 
 [env.staging]
 # Staging-specific settings
+vars = { API_KEY = "staging-api-key-1234567890" }
 
 [env.development]
 # Development-specific settings 

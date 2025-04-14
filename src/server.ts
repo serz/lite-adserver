@@ -3,11 +3,21 @@ import cors from '@fastify/cors';
 import { campaignRoutes } from './routes/campaigns';
 import { zoneRoutes } from './routes/zones';
 import { statRoutes } from './routes/stats';
+import { apiKeyAuthHook } from './middleware/auth';
+
+// Import our type definitions
+import './types/fastify';
+
+// Environment interface for D1
+interface Env {
+  DB: D1Database;
+}
 
 /**
  * Create and configure the Fastify server instance
+ * @param env Optional environment containing D1 database
  */
-export function createServer(): FastifyInstance {
+export function createServer(env?: Env): FastifyInstance {
   const server = fastify({
     logger: true,
     ajv: {
@@ -19,17 +29,33 @@ export function createServer(): FastifyInstance {
     },
   });
   
+  // Register the D1 database if provided
+  if (env?.DB) {
+    server.decorate('d1Env', env);
+  }
+  
   // Register plugins
   server.register(cors, {
-    origin: true, // Reflects the request origin. Set to specific origins in production
+    origin: process.env['NODE_ENV'] === 'production' 
+      ? process.env['ALLOWED_ORIGINS']?.split(',') || false
+      : true,
   });
   
-  // Register routes
-  server.register(campaignRoutes, { prefix: '/api/campaigns' });
-  server.register(zoneRoutes, { prefix: '/api/zones' });
-  server.register(statRoutes, { prefix: '/api/stats' });
+  // Create API routes with authentication
+  server.register(
+    async (apiRouter) => {
+      // Add authentication to all API routes
+      apiRouter.addHook('onRequest', apiKeyAuthHook());
+      
+      // Register API routes
+      apiRouter.register(campaignRoutes, { prefix: '/campaigns' });
+      apiRouter.register(zoneRoutes, { prefix: '/zones' });
+      apiRouter.register(statRoutes, { prefix: '/stats' });
+    },
+    { prefix: '/api' }
+  );
   
-  // Health check route
+  // Health check route (no authentication)
   server.get('/health', async () => {
     return { status: 'ok' };
   });

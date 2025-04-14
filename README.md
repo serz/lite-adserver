@@ -23,6 +23,7 @@ Lite Ad Server is designed to serve ads at high speed globally while maintaining
 
 - [Installation Guide](docs/Installation.md) - Step-by-step setup instructions
 - [Architecture Documentation](docs/Architecture.md) - Technical design and project structure
+- [API Documentation](docs/api.md) - API endpoints, authentication, and usage
 
 ## Usage
 
@@ -46,12 +47,20 @@ GET /track/click/:campaignId/:zoneId
 
 ### Admin API
 
-The Fastify-based Admin API provides endpoints for campaign and zone management:
+The Fastify-based Admin API provides endpoints for campaign and zone management. All API endpoints require authentication using an API key in the `Authorization` header (Bearer token format).
 
-- **Campaigns**: `/api/campaigns`
-- **Zones**: `/api/zones`
-- **Statistics**: `/api/stats`
-- **Click Data**: `/api/stats/clicks`
+```
+Authorization: Bearer your-api-key-here
+```
+
+Available API endpoints:
+
+- **Campaigns**: `/api/campaigns` - Manage ad campaigns
+- **Zones**: `/api/zones` - Manage ad placement zones (coming soon)
+- **Statistics**: `/api/stats` - View performance metrics (coming soon)
+- **Click Data**: `/api/stats/clicks` - Access detailed click information (coming soon)
+
+For detailed API documentation, see [API Documentation](docs/api.md).
 
 ## Current Status
 
