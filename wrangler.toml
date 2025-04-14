@@ -1,0 +1,28 @@
+name = "lite-adserver"
+main = "src/workers/index.ts"
+compatibility_date = "2023-10-30"
+
+# D1 Database for campaign and zone metadata
+[[d1_databases]]
+binding = "DB"
+database_name = "lite_adserver_db"
+database_id = "57b8bd9d-8ee8-4387-b4e3-e980085750f3"
+
+# Durable Objects for counters and statistics
+[[durable_objects.bindings]]
+name = "COUNTER"
+class_name = "CounterDO"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["CounterDO"]
+
+# Define environments
+[env.production]
+# Production-specific settings
+
+[env.staging]
+# Staging-specific settings
+
+[env.development]
+# Development-specific settings 
