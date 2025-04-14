@@ -80,6 +80,11 @@ async function handleApiRequest(request: Request, env: Env, ctx: ExecutionContex
     return handleCampaignApiRequests(request, env);
   }
   
+  // Handle targeting rule types routes
+  if (path === '/api/targeting-rule-types' && request.method === 'GET') {
+    return await listTargetingRuleTypes(env);
+  }
+  
   // Handle zones routes (to be implemented)
   if (path.startsWith('/api/zones')) {
     return new Response(JSON.stringify({ error: 'Zones API not implemented yet' }), { 
@@ -995,5 +1000,36 @@ async function fetchCampaign(db: D1Database, campaignId: string | number): Promi
   } catch (error) {
     console.error('Error fetching campaign:', error);
     return null;
+  }
+}
+
+/**
+ * List targeting rule types
+ */
+async function listTargetingRuleTypes(env: Env): Promise<Response> {
+  try {
+    // Query all targeting rule types
+    const result = await env.DB.prepare(`
+      SELECT id, name, description
+      FROM targeting_rule_types
+      ORDER BY name ASC
+    `).all();
+    
+    if (result.error) {
+      throw new Error(`Database error: ${result.error}`);
+    }
+    
+    // Return the targeting rule types
+    return new Response(JSON.stringify({
+      targeting_rule_types: result.results || []
+    }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    console.error('Error listing targeting rule types:', error);
+    return new Response(JSON.stringify({ error: 'Server error listing targeting rule types' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 } 

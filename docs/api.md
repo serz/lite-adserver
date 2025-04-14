@@ -2,6 +2,17 @@
 
 This document describes the Lite Ad Server API endpoints, authentication, and usage. The documentation is organized by resource type and includes detailed information on request/response formats.
 
+## Table of Contents
+
+- [Authentication](#authentication)
+- [Resources](#resources)
+  - [Campaigns](#campaigns-api--implemented)
+  - [Targeting Rule Types](#targeting-rule-types-api--implemented)
+  - [Zones](#zones-api--coming-soon)
+  - [Statistics](#statistics-api--coming-soon)
+- [Error Responses](#error-responses)
+- [Rate Limiting](#rate-limiting)
+
 ## Authentication
 
 All API requests require authentication using an API key. 
@@ -298,6 +309,54 @@ curl -X DELETE \
 ```
 
 **Response**: 204 No Content
+
+## Targeting Rule Types API ✅ (Implemented)
+
+The Targeting Rule Types API allows you to retrieve information about all available targeting rule types.
+
+### List Targeting Rule Types
+
+Retrieves a list of all targeting rule types.
+
+**Endpoint**: `GET /api/targeting-rule-types`
+
+**Authentication**: Required
+
+**Example Request**:
+
+```bash
+curl -H "Authorization: Bearer your-api-key-here" \
+  "https://your-api-url.com/api/targeting-rule-types"
+```
+
+**Example Response**:
+
+```json
+{
+  "targeting_rule_types": [
+    {
+      "id": 1,
+      "name": "Country",
+      "description": "Target users by their country code (ISO 3166-1 alpha-2)"
+    },
+    {
+      "id": 2,
+      "name": "Device Type",
+      "description": "Target users by their device type (desktop, mobile, tablet)"
+    },
+    {
+      "id": 3,
+      "name": "Browser",
+      "description": "Target users by their browser (Chrome, Firefox, Safari, etc.)"
+    },
+    {
+      "id": 4,
+      "name": "Zone ID",
+      "description": "Target specific ad zones where the ad should appear"
+    }
+  ]
+}
+```
 
 ## Zones API ⏳ (Coming Soon)
 
