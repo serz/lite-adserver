@@ -21,6 +21,7 @@ Lite Ad Server is designed to serve ads at high speed globally while maintaining
 
 - **Cloudflare Workers**: Handle ad serving logic and tracking redirects
 - **Cloudflare D1**: SQL database for campaign, zone, and click data
+- **Durable Objects**: Support for frequency capping and real-time statistics
 - **Targeting Rules**: Flexible system for campaign targeting and selection
 - **Fastify API**: Admin API for management functions
 
@@ -81,6 +82,15 @@ Lite Ad Server is designed to serve ads at high speed globally while maintaining
    wrangler d1 execute lite_adserver_db --file=./migrations/0000_initial_schema.sql
    ```
 
+6. Insert sample data:
+   ```
+   wrangler d1 execute lite_adserver_db --local --command "INSERT INTO zones (name, site_url, traffic_back_url, status) VALUES ('Homepage Banner', 'https://example.com', 'https://example.com/fallback', 'active');"
+   
+   wrangler d1 execute lite_adserver_db --local --command "INSERT INTO campaigns (name, redirect_url, start_date, end_date, status) VALUES ('Summer Sale Campaign', 'https://example.com/summer-sale', unixepoch(), unixepoch() + 2592000, 'active');"
+   
+   wrangler d1 execute lite_adserver_db --local --command "INSERT INTO targeting_rules (campaign_id, targeting_rule_type_id, targeting_method, rule, weight) VALUES (1, 4, 'whitelist', '1', 100);"
+   ```
+
 ### Development
 
 Start the local development server:
@@ -88,6 +98,44 @@ Start the local development server:
 ```
 npm run dev
 ```
+
+### Type Checking and Code Quality
+
+The project uses TypeScript with strict type checking enabled. We've added several tools to ensure code quality:
+
+1. **TypeScript Strict Mode**: The `tsconfig.json` is configured with strict type checking enabled.
+
+2. **Type Checking Script**: Run type checking without compilation:
+   ```
+   npm run type-check
+   ```
+
+3. **ESLint Integration**: Check for code quality and potential issues:
+   ```
+   npm run lint
+   ```
+
+4. **Combined Check**: Run all checks (type, lint, tests) with one command:
+   ```
+   npm run check-all
+   ```
+
+5. **Pre-deployment Checks**: Type checking and linting automatically run before deployment:
+   ```
+   npm run deploy
+   ```
+
+Always run `npm run check-all` before submitting a pull request to ensure your code meets the project's quality standards.
+
+### Testing Ad Serving
+
+Test serving an ad by making a request to:
+
+```
+GET http://localhost:8787/serve/1
+```
+
+This should redirect to a tracking URL, which in turn would redirect to the campaign URL.
 
 ### Deployment
 
@@ -126,6 +174,56 @@ The Fastify-based Admin API provides endpoints for campaign and zone management:
 - **Statistics**: `/api/stats`
 - **Click Data**: `/api/stats/clicks`
 
+## Current Status
+
+The project is currently in active development. The core ad serving functionality is implemented, and the project uses a D1 database with proper schema. Click tracking is operational, and basic campaign selection based on zone targeting is working.
+
+### Working Features
+
+- Basic ad serving with zone targeting
+- Click tracking with detailed metadata
+- Proper error handling in all worker routes
+- Database schema with appropriate indices
+- Support for trailing slash URLs in all endpoints
+- Device type detection based on user agent
+- Traffic back URL fallback when no campaigns match
+
+### Developer Guidelines
+
+When contributing to this project, please follow these guidelines:
+
+1. **Type Safety**: Use proper TypeScript types and avoid `any` when possible. The project now has strict type checking enabled.
+
+2. **Error Handling**: Implement try/catch blocks for all database operations and async functions. Always handle Promise rejections.
+
+3. **Input Validation**: Validate all input parameters before using them, particularly for user-provided inputs.
+
+4. **Consistent ID Handling**: Follow the numeric ID approach for database operations, with proper type conversions when necessary.
+
+5. **Code Quality**: Run `npm run check-all` before submitting any PR to ensure your code meets TypeScript and ESLint standards.
+
+6. **Testing**: Add tests for any new functionality. Run tests with `npm test`.
+
+7. **Documentation**: Document all new functions and endpoints with appropriate JSDoc comments.
+
+8. **Commit Messages**: Use clear, descriptive commit messages. Prefix with the type of change (feat, fix, docs, etc.).
+
+9. **Branch Strategy**: Create feature branches from `main` and keep PRs focused on single features or fixes.
+
+## Code Quality Notes
+
+Based on our code analysis, here are some ongoing areas for improvement:
+
+1. **Type System Alignment**: The database uses numeric IDs while TypeScript models use string IDs, leading to frequent conversions. Consider aligning these for better type safety.
+
+2. **Campaign Selection**: The current implementation selects the first available campaign. A proper weighted selection algorithm based on targeting rule weights would be more effective.
+
+3. **Device Detection**: The current device detection is basic and could be improved with a more comprehensive solution.
+
+4. **Security Headers**: The application currently lacks proper security headers which should be added before production deployment.
+
+5. **CORS Configuration**: The current CORS setup allows all origins, which should be restricted in production.
+
 ## Implementation TODO List
 
 ### Core Worker Implementation
@@ -144,7 +242,7 @@ The Fastify-based Admin API provides endpoints for campaign and zone management:
 
 ### Targeting System
 - [ ] Complete geo-targeting implementation
-- [ ] Implement device type targeting
+- [ ] Improve device type targeting
 - [ ] Implement frequency capping based on cookies/localStorage
 - [ ] Support for rule combinations (AND/OR logic)
 
@@ -166,6 +264,11 @@ The Fastify-based Admin API provides endpoints for campaign and zone management:
 - [ ] Document targeting rule system
 - [ ] Create integration examples
 
+### Testing
+- [ ] Implement unit tests for core functions
+- [ ] Add integration tests for API endpoints
+- [ ] Set up continuous testing in CI pipeline
+
 ## License
 
 MIT
@@ -173,3 +276,10 @@ MIT
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request. 
+
+When creating a pull request:
+1. Fork the repository
+2. Create a feature branch from `main` (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request 
