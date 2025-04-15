@@ -85,12 +85,9 @@ async function handleApiRequest(request: Request, env: Env, ctx: ExecutionContex
     return await listTargetingRuleTypes(env);
   }
   
-  // Handle zones routes (to be implemented)
+  // Handle zones routes
   if (path.startsWith('/api/zones')) {
-    return new Response(JSON.stringify({ error: 'Zones API not implemented yet' }), { 
-      status: 501,
-      headers: { 'Content-Type': 'application/json' } 
-    });
+    return handleZoneApiRequests(request, env);
   }
   
   // Handle stats routes (to be implemented)
@@ -1028,6 +1025,470 @@ async function listTargetingRuleTypes(env: Env): Promise<Response> {
   } catch (error) {
     console.error('Error listing targeting rule types:', error);
     return new Response(JSON.stringify({ error: 'Server error listing targeting rule types' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+/**
+ * Handle Zone API requests
+ */
+async function handleZoneApiRequests(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const path = url.pathname.endsWith('/') ? url.pathname.slice(0, -1) : url.pathname;
+  const pathParts = path.split('/');
+  
+  // GET /api/zones - List all zones
+  if (path === '/api/zones' && request.method === 'GET') {
+    return await listZones(request, env);
+  }
+  
+  // GET /api/zones/:id - Get zone by ID
+  if (pathParts.length === 4 && pathParts[2] === 'zones' && request.method === 'GET') {
+    const zoneId = pathParts[3];
+    return await getZone(zoneId, env);
+  }
+  
+  // POST /api/zones - Create a new zone
+  if (path === '/api/zones' && request.method === 'POST') {
+    return await createZone(request, env);
+  }
+  
+  // PUT /api/zones/:id - Update zone
+  if (pathParts.length === 4 && pathParts[2] === 'zones' && request.method === 'PUT') {
+    const zoneId = pathParts[3];
+    return await updateZone(zoneId, request, env);
+  }
+  
+  // DELETE /api/zones/:id - Delete zone
+  if (pathParts.length === 4 && pathParts[2] === 'zones' && request.method === 'DELETE') {
+    const zoneId = pathParts[3];
+    return await deleteZone(zoneId, env);
+  }
+  
+  return new Response(JSON.stringify({ error: 'Zone API endpoint not found' }), { 
+    status: 404,
+    headers: { 'Content-Type': 'application/json' } 
+  });
+}
+
+/**
+ * List all zones with pagination and filtering
+ */
+async function listZones(request: Request, env: Env): Promise<Response> {
+  try {
+    const url = new URL(request.url);
+    const params = url.searchParams;
+    
+    // Parse query parameters
+    const status = params.get('status');
+    const limit = parseInt(params.get('limit') || '20', 10);
+    const offset = parseInt(params.get('offset') || '0', 10);
+    const sort = params.get('sort') || 'created_at';
+    const order = params.get('order') || 'desc';
+    
+    // Validate parameters
+    if (limit < 1 || limit > 100) {
+      return new Response(JSON.stringify({ error: 'Limit must be between 1 and 100' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    if (offset < 0) {
+      return new Response(JSON.stringify({ error: 'Offset must be a non-negative integer' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Valid sort fields
+    const validSortFields = ['name', 'created_at', 'site_url'];
+    if (!validSortFields.includes(sort)) {
+      return new Response(JSON.stringify({ error: 'Invalid sort field' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Valid order values
+    if (order !== 'asc' && order !== 'desc') {
+      return new Response(JSON.stringify({ error: 'Order must be "asc" or "desc"' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Build SQL query
+    let sql = 'SELECT * FROM zones';
+    const queryParams: any[] = [];
+    
+    // Add status filter if provided
+    if (status) {
+      sql += ' WHERE status = ?';
+      queryParams.push(status);
+    }
+    
+    // Add sorting
+    sql += ` ORDER BY ${sort} ${order}`;
+    
+    // Add pagination
+    sql += ' LIMIT ? OFFSET ?';
+    queryParams.push(limit, offset);
+    
+    // Count total for pagination
+    let countSql = 'SELECT COUNT(*) as total FROM zones';
+    const countParams: any[] = [];
+    
+    if (status) {
+      countSql += ' WHERE status = ?';
+      countParams.push(status);
+    }
+    
+    // Execute queries
+    const [zonesResult, countResult] = await Promise.all([
+      env.DB.prepare(sql).bind(...queryParams).all(),
+      env.DB.prepare(countSql).bind(...countParams).all()
+    ]);
+    
+    // Handle database errors
+    if (zonesResult.error) {
+      throw new Error(`Database error: ${zonesResult.error}`);
+    }
+    
+    if (countResult.error) {
+      throw new Error(`Database error: ${countResult.error}`);
+    }
+    
+    // Extract results
+    const zones = zonesResult.results || [];
+    const total = countResult.results && countResult.results[0] ? 
+      (countResult.results[0] as { total: number }).total : 0;
+    
+    // Return paginated response
+    return new Response(JSON.stringify({
+      zones,
+      pagination: {
+        total,
+        limit,
+        offset,
+        has_more: offset + limit < total
+      }
+    }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    console.error('Error listing zones:', error);
+    return new Response(JSON.stringify({ error: 'Server error listing zones' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+/**
+ * Get zone by ID
+ */
+async function getZone(zoneId: string, env: Env): Promise<Response> {
+  try {
+    // Validate ID
+    const id = parseAndValidateId(zoneId, 'zone');
+    if (id === null) {
+      return new Response(JSON.stringify({ error: 'Invalid zone ID' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Fetch the zone
+    const sql = 'SELECT * FROM zones WHERE id = ?';
+    const result = await env.DB.prepare(sql).bind(id).all();
+    
+    if (result.error) {
+      throw new Error(`Database error: ${result.error}`);
+    }
+    
+    const zones = result.results || [];
+    
+    if (zones.length === 0) {
+      return new Response(JSON.stringify({ error: 'Zone not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    const zone = zones[0];
+    
+    return new Response(JSON.stringify(zone), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    console.error('Error fetching zone:', error);
+    return new Response(JSON.stringify({ error: 'Server error fetching zone' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+/**
+ * Create a new zone
+ */
+async function createZone(request: Request, env: Env): Promise<Response> {
+  try {
+    // Parse request body
+    const data = await request.json();
+    
+    // Validate required fields
+    if (!data.name) {
+      return new Response(JSON.stringify({ error: 'Zone name is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // URL validations if URLs are provided
+    if (data.site_url) {
+      try {
+        new URL(data.site_url);
+      } catch (e) {
+        return new Response(JSON.stringify({ error: 'Invalid site URL format' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+    
+    if (data.traffic_back_url) {
+      try {
+        new URL(data.traffic_back_url);
+      } catch (e) {
+        return new Response(JSON.stringify({ error: 'Invalid traffic back URL format' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+    
+    // Prepare zone object
+    const now = Date.now();
+    const zone = {
+      name: data.name,
+      site_url: data.site_url || null,
+      traffic_back_url: data.traffic_back_url || null,
+      status: 'active',
+      created_at: now,
+      updated_at: now
+    };
+    
+    // Insert zone into database
+    const sql = `
+      INSERT INTO zones (name, site_url, traffic_back_url, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `;
+    
+    const result = await env.DB.prepare(sql).bind(
+      zone.name,
+      zone.site_url,
+      zone.traffic_back_url,
+      zone.status,
+      zone.created_at,
+      zone.updated_at
+    ).run();
+    
+    if (result.error) {
+      throw new Error(`Database error: ${result.error}`);
+    }
+    
+    // Return success response with the ID
+    return new Response(JSON.stringify({
+      id: result.meta?.last_row_id,
+      status: zone.status,
+      created_at: zone.created_at
+    }), {
+      status: 201,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    console.error('Error creating zone:', error);
+    return new Response(JSON.stringify({ error: 'Server error creating zone' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+/**
+ * Update an existing zone
+ */
+async function updateZone(zoneId: string, request: Request, env: Env): Promise<Response> {
+  try {
+    // Validate ID
+    const id = parseAndValidateId(zoneId, 'zone');
+    if (id === null) {
+      return new Response(JSON.stringify({ error: 'Invalid zone ID' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Parse request body
+    const data = await request.json();
+    
+    // Validate data
+    const validationError = validateZoneUpdateData(data);
+    if (validationError) {
+      return new Response(JSON.stringify({ error: validationError }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Check if zone exists
+    const checkSql = 'SELECT id FROM zones WHERE id = ?';
+    const checkResult = await env.DB.prepare(checkSql).bind(id).all();
+    
+    if (checkResult.error) {
+      throw new Error(`Database error: ${checkResult.error}`);
+    }
+    
+    if (!checkResult.results || checkResult.results.length === 0) {
+      return new Response(JSON.stringify({ error: 'Zone not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Prepare update query
+    const updates: string[] = [];
+    const params: any[] = [];
+    
+    // Add fields to update if provided
+    if (data.name !== undefined) {
+      updates.push('name = ?');
+      params.push(data.name);
+    }
+    
+    if (data.site_url !== undefined) {
+      updates.push('site_url = ?');
+      params.push(data.site_url);
+    }
+    
+    if (data.traffic_back_url !== undefined) {
+      updates.push('traffic_back_url = ?');
+      params.push(data.traffic_back_url);
+    }
+    
+    if (data.status !== undefined) {
+      updates.push('status = ?');
+      params.push(data.status);
+    }
+    
+    // Add updated_at
+    updates.push('updated_at = ?');
+    params.push(Date.now());
+    
+    // Add zone ID to params
+    params.push(id);
+    
+    // Execute update query
+    const updateSql = `UPDATE zones SET ${updates.join(', ')} WHERE id = ?`;
+    const updateResult = await env.DB.prepare(updateSql).bind(...params).run();
+    
+    if (updateResult.error) {
+      throw new Error(`Database error: ${updateResult.error}`);
+    }
+    
+    // Return success response
+    return new Response(JSON.stringify({
+      id,
+      updated_at: Date.now()
+    }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    console.error('Error updating zone:', error);
+    return new Response(JSON.stringify({ error: 'Server error updating zone' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+/**
+ * Validate zone update data
+ */
+function validateZoneUpdateData(data: any): string | null {
+  // Check for URL format if provided
+  if (data.site_url) {
+    try {
+      new URL(data.site_url);
+    } catch (e) {
+      return 'Invalid site URL format';
+    }
+  }
+  
+  if (data.traffic_back_url) {
+    try {
+      new URL(data.traffic_back_url);
+    } catch (e) {
+      return 'Invalid traffic back URL format';
+    }
+  }
+  
+  // Check status if provided
+  if (data.status && !['active', 'inactive'].includes(data.status)) {
+    return 'Status must be one of: active, inactive';
+  }
+  
+  return null;
+}
+
+/**
+ * Delete a zone
+ */
+async function deleteZone(zoneId: string, env: Env): Promise<Response> {
+  try {
+    // Validate ID
+    const id = parseAndValidateId(zoneId, 'zone');
+    if (id === null) {
+      return new Response(JSON.stringify({ error: 'Invalid zone ID' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Check if zone exists
+    const checkSql = 'SELECT id FROM zones WHERE id = ?';
+    const checkResult = await env.DB.prepare(checkSql).bind(id).all();
+    
+    if (checkResult.error) {
+      throw new Error(`Database error: ${checkResult.error}`);
+    }
+    
+    if (!checkResult.results || checkResult.results.length === 0) {
+      return new Response(JSON.stringify({ error: 'Zone not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Delete the zone
+    const deleteSql = 'DELETE FROM zones WHERE id = ?';
+    const deleteResult = await env.DB.prepare(deleteSql).bind(id).run();
+    
+    if (deleteResult.error) {
+      throw new Error(`Database error: ${deleteResult.error}`);
+    }
+    
+    // Return success response
+    return new Response(null, {
+      status: 204
+    });
+  } catch (error) {
+    console.error('Error deleting zone:', error);
+    return new Response(JSON.stringify({ error: 'Server error deleting zone' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
     });

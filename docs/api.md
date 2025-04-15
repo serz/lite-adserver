@@ -8,7 +8,7 @@ This document describes the Lite Ad Server API endpoints, authentication, and us
 - [Resources](#resources)
   - [Campaigns](#campaigns-api--implemented)
   - [Targeting Rule Types](#targeting-rule-types-api--implemented)
-  - [Zones](#zones-api--coming-soon)
+  - [Zones](#zones-api--implemented)
   - [Statistics](#statistics-api--coming-soon)
 - [Error Responses](#error-responses)
 - [Rate Limiting](#rate-limiting)
@@ -358,16 +358,214 @@ curl -H "Authorization: Bearer your-api-key-here" \
 }
 ```
 
-## Zones API ⏳ (Coming Soon)
+## Zones API ✅ (Implemented)
 
-The Zones API will allow you to manage ad placement zones across your websites.
+The Zones API allows you to manage ad placement zones across your websites.
 
-Planned endpoints:
-- `GET /api/zones` - List all zones
-- `GET /api/zones/:id` - Get a specific zone
-- `POST /api/zones` - Create a new zone
-- `PUT /api/zones/:id` - Update a zone
-- `DELETE /api/zones/:id` - Delete a zone
+### List Zones
+
+Retrieves a paginated list of zones.
+
+**Endpoint**: `GET /api/zones`
+
+**Authentication**: Required
+
+**Query Parameters**:
+
+| Parameter | Type    | Description                                      | Default    |
+|-----------|---------|--------------------------------------------------|------------|
+| status    | string  | Filter by status (active, inactive)              | (all)      |
+| limit     | integer | Number of results per page (1-100)               | 20         |
+| offset    | integer | Number of results to skip                        | 0          |
+| sort      | string  | Field to sort by (name, created_at, site_url)    | created_at |
+| order     | string  | Sort order (asc, desc)                           | desc       |
+
+**Example Request**:
+
+```bash
+curl -H "Authorization: Bearer your-api-key-here" \
+  "https://your-api-url.com/api/zones?status=active&limit=10&sort=name&order=asc"
+```
+
+**Example Response**:
+
+```json
+{
+  "zones": [
+    {
+      "id": 1,
+      "name": "Homepage Banner",
+      "site_url": "https://example.com",
+      "traffic_back_url": "https://example.com/fallback",
+      "status": "active",
+      "created_at": 1657152000000,
+      "updated_at": 1657238400000
+    },
+    {
+      "id": 2,
+      "name": "Sidebar Ad",
+      "site_url": "https://example.com/blog",
+      "traffic_back_url": null,
+      "status": "active",
+      "created_at": 1657152000000,
+      "updated_at": 1657238400000
+    }
+  ],
+  "pagination": {
+    "total": 12,
+    "limit": 10,
+    "offset": 0,
+    "has_more": true
+  }
+}
+```
+
+### Get Zone
+
+Retrieves a specific zone by ID.
+
+**Endpoint**: `GET /api/zones/:id`
+
+**Authentication**: Required
+
+**URL Parameters**:
+
+| Parameter | Type    | Description      |
+|-----------|---------|------------------|
+| id        | integer | Zone ID          |
+
+**Example Request**:
+
+```bash
+curl -H "Authorization: Bearer your-api-key-here" \
+  "https://your-api-url.com/api/zones/1"
+```
+
+**Example Response**:
+
+```json
+{
+  "id": 1,
+  "name": "Homepage Banner",
+  "site_url": "https://example.com",
+  "traffic_back_url": "https://example.com/fallback",
+  "status": "active",
+  "created_at": 1657152000000,
+  "updated_at": 1657238400000
+}
+```
+
+### Create Zone
+
+Creates a new zone.
+
+**Endpoint**: `POST /api/zones`
+
+**Authentication**: Required
+
+**Request Body**:
+
+```json
+{
+  "name": "Mobile Footer Ad",
+  "site_url": "https://example.com/mobile",
+  "traffic_back_url": "https://example.com/mobile/fallback"
+}
+```
+
+**Example Request**:
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer your-api-key-here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Mobile Footer Ad",
+    "site_url": "https://example.com/mobile",
+    "traffic_back_url": "https://example.com/mobile/fallback"
+  }' \
+  "https://your-api-url.com/api/zones"
+```
+
+**Example Response**:
+
+```json
+{
+  "id": 3,
+  "status": "active",
+  "created_at": 1635379200000
+}
+```
+
+### Update Zone
+
+Updates an existing zone.
+
+**Endpoint**: `PUT /api/zones/:id`
+
+**Authentication**: Required
+
+**URL Parameters**:
+
+| Parameter | Type    | Description      |
+|-----------|---------|------------------|
+| id        | integer | Zone ID          |
+
+**Request Body**:
+
+```json
+{
+  "name": "Updated Zone Name",
+  "site_url": "https://example.com/updated",
+  "status": "inactive"
+}
+```
+
+**Example Request**:
+
+```bash
+curl -X PUT \
+  -H "Authorization: Bearer your-api-key-here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Updated Zone Name",
+    "status": "inactive"
+  }' \
+  "https://your-api-url.com/api/zones/3"
+```
+
+**Example Response**:
+
+```json
+{
+  "id": 3,
+  "updated_at": 1635465600000
+}
+```
+
+### Delete Zone
+
+Deletes a zone.
+
+**Endpoint**: `DELETE /api/zones/:id`
+
+**Authentication**: Required
+
+**URL Parameters**:
+
+| Parameter | Type    | Description      |
+|-----------|---------|------------------|
+| id        | integer | Zone ID          |
+
+**Example Request**:
+
+```bash
+curl -X DELETE \
+  -H "Authorization: Bearer your-api-key-here" \
+  "https://your-api-url.com/api/zones/3"
+```
+
+**Response**: 204 No Content
 
 ## Statistics API ⏳ (Coming Soon)
 

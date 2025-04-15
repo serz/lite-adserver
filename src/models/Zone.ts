@@ -16,14 +16,11 @@ export type ZoneStatus = 'active' | 'inactive';
 
 export interface ZoneStats {
   zone_id: number;
+  total_impressions: number;
   total_clicks: number;
-  campaign_stats: {
-    campaign_id: number;
-    campaign_name: string;
-    clicks: number;
-  }[];
   clicks_by_day: {
     date: string;
+    impressions: number;
     clicks: number;
   }[];
   period: {

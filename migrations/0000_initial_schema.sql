@@ -32,10 +32,10 @@ CREATE TABLE IF NOT EXISTS targeting_rule_types (
 -- Insert default targeting rule types
 INSERT INTO targeting_rule_types (name, description)
 VALUES 
-  ('Geographic Location', 'Target by country, region, or city'),
-  ('Device Type', 'Target by device: desktop, mobile, tablet'),
-  ('Frequency Capping', 'Limit impressions per user'),
-  ('Zone ID', 'Target specific ad placement zones');
+  ('geo', 'Target by country'),
+  ('device_type', 'Target by device: desktop, mobile, tablet'),
+  ('capping', 'Limit impressions per user'),
+  ('zone_id', 'Target specific ad placement zones');
 
 -- Targeting rules
 CREATE TABLE IF NOT EXISTS targeting_rules (
@@ -51,9 +51,11 @@ CREATE TABLE IF NOT EXISTS targeting_rules (
   FOREIGN KEY (targeting_rule_type_id) REFERENCES targeting_rule_types(id)
 );
 
--- Raw click tracking data
-CREATE TABLE IF NOT EXISTS clicks (
+-- Unified ad events table (replaces clicks)
+CREATE TABLE IF NOT EXISTS ad_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_type TEXT NOT NULL,                     -- 'impression', 'click', 'conversion', etc.
+  event_time INTEGER NOT NULL DEFAULT (unixepoch()), -- Unix timestamp
   campaign_id INTEGER NOT NULL,
   zone_id INTEGER NOT NULL,
   ip TEXT,
@@ -61,7 +63,8 @@ CREATE TABLE IF NOT EXISTS clicks (
   referer TEXT,
   country TEXT,
   device_type TEXT,
-  timestamp INTEGER NOT NULL DEFAULT (unixepoch()),
+  browser TEXT,
+  os TEXT,
   FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
   FOREIGN KEY (zone_id) REFERENCES zones(id) ON DELETE CASCADE
 );
@@ -72,7 +75,11 @@ CREATE INDEX idx_campaigns_dates ON campaigns(start_date, end_date);
 CREATE INDEX idx_zones_status ON zones(status);
 CREATE INDEX idx_targeting_rules_campaign ON targeting_rules(campaign_id);
 CREATE INDEX idx_targeting_rules_type ON targeting_rules(targeting_rule_type_id);
-CREATE INDEX idx_clicks_campaign ON clicks(campaign_id);
-CREATE INDEX idx_clicks_zone ON clicks(zone_id);
-CREATE INDEX idx_clicks_timestamp ON clicks(timestamp);
-CREATE INDEX idx_clicks_country ON clicks(country); 
+
+-- Updated indexes for ad_events
+CREATE INDEX idx_ad_events_campaign ON ad_events(campaign_id);
+CREATE INDEX idx_ad_events_zone ON ad_events(zone_id);
+CREATE INDEX idx_ad_events_time ON ad_events(event_time);
+CREATE INDEX idx_ad_events_type ON ad_events(event_type);
+CREATE INDEX idx_ad_events_country ON ad_events(country);
+CREATE INDEX idx_ad_events_device ON ad_events(device_type);

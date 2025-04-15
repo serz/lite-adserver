@@ -58,9 +58,9 @@ Authorization: Bearer your-api-key-here
 Available API endpoints:
 
 - **Campaigns**: `/api/campaigns` - Manage ad campaigns
-- **Zones**: `/api/zones` - Manage ad placement zones (coming soon)
+- **Targeting Rule Types**: `/api/targeting-rule-types` - Get information about targeting rules
+- **Zones**: `/api/zones` - Manage ad placement zones
 - **Statistics**: `/api/stats` - View performance metrics (coming soon)
-- **Click Data**: `/api/stats/clicks` - Access detailed click information (coming soon)
 
 For detailed API documentation, see [API Documentation](docs/api.md).
 
@@ -109,7 +109,7 @@ When contributing to this project, please follow these guidelines:
 - [ ] Connect admin API to D1 database
 - [ ] Implement authentication for admin routes
 - [ ] Complete campaign CRUD operations
-- [ ] Complete zone CRUD operations
+- [x] Complete zone CRUD operations
 - [ ] Implement proper validation for all inputs
 
 ### Phase 3: Advanced Targeting
