@@ -37,7 +37,7 @@ function isPortInUse(port) {
  * @param {number|null} port - The specific port to use, or null for dynamic port
  */
 function startServer(port) {
-  const args = ['wrangler', 'dev', 'src/workers/index.ts'];
+  const args = ['npx', 'wrangler', 'dev', 'src/workers/index.ts'];
   
   // Add port argument if a specific port is requested
   if (port) {
