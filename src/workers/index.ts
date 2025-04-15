@@ -96,12 +96,9 @@ async function handleApiRequest(request: Request, env: Env, ctx: ExecutionContex
     return await listAdEvents(request, env);
   }
   
-  // Handle stats routes (to be implemented)
-  if (path.startsWith('/api/stats')) {
-    return new Response(JSON.stringify({ error: 'Stats API not implemented yet' }), { 
-      status: 501,
-      headers: { 'Content-Type': 'application/json' } 
-    });
+  // Handle stats routes
+  if (path.startsWith('/api/stats') && request.method === 'GET') {
+    return await getStats(request, env);
   }
   
   return new Response(JSON.stringify({ error: 'API endpoint not found' }), { 
@@ -715,6 +712,20 @@ async function handleAdServing(request: Request, env: Env, ctx: ExecutionContext
         return Response.redirect(zone.traffic_back_url, 302);
       }
       
+      // No eligible campaigns and no fallback URL - record as unsold impression
+      await recordClick(env.DB, {
+        campaign_id: null,
+        zone_id: zoneId,
+        ip: request.headers.get('CF-Connecting-IP') || undefined,
+        user_agent: request.headers.get('User-Agent') || undefined,
+        referer: request.headers.get('Referer') || undefined,
+        country: request.headers.get('CF-IPCountry') || undefined,
+        device_type: detectDeviceType(request.headers.get('User-Agent') || ''),
+        timestamp: Date.now(),
+        event_type: 'unsold',
+        sub_id: subId
+      });
+      
       return new Response('No eligible campaigns', { status: 404 });
     }
     
@@ -722,6 +733,20 @@ async function handleAdServing(request: Request, env: Env, ctx: ExecutionContext
     const selectedCampaign = selectCampaign(campaigns, request);
     
     if (!selectedCampaign) {
+      // No suitable campaign found after filtering - record as unsold impression
+      await recordClick(env.DB, {
+        campaign_id: null,
+        zone_id: zoneId,
+        ip: request.headers.get('CF-Connecting-IP') || undefined,
+        user_agent: request.headers.get('User-Agent') || undefined,
+        referer: request.headers.get('Referer') || undefined,
+        country: request.headers.get('CF-IPCountry') || undefined,
+        device_type: detectDeviceType(request.headers.get('User-Agent') || ''),
+        timestamp: Date.now(),
+        event_type: 'unsold',
+        sub_id: subId
+      });
+      
       return new Response('No suitable campaign found', { status: 404 });
     }
     
@@ -1712,6 +1737,137 @@ async function listAdEvents(request: Request, env: Env): Promise<Response> {
   } catch (error) {
     console.error('Error listing ad events:', error);
     return new Response(JSON.stringify({ error: 'Server error listing ad events' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+/**
+ * Get aggregated statistics
+ */
+async function getStats(request: Request, env: Env): Promise<Response> {
+  try {
+    const url = new URL(request.url);
+    const params = url.searchParams;
+    
+    // Parse query parameters with defaults
+    const fromParam = params.get('from');
+    // Use start of day as default
+    const startOfDayTimestamp = new Date();
+    startOfDayTimestamp.setHours(0, 0, 0, 0);
+    const from = fromParam ? parseInt(fromParam, 10) : startOfDayTimestamp.getTime();
+    
+    const toParam = params.get('to');
+    const to = toParam ? parseInt(toParam, 10) : Date.now();
+    
+    const campaignIdsParam = params.get('campaign_ids');
+    const zoneIdsParam = params.get('zone_ids');
+    const groupByParam = params.get('group_by') || 'date';
+    
+    // Validate group_by parameter
+    const validGroupByValues = ['date', 'campaign_id', 'zone_id', 'country'];
+    if (!validGroupByValues.includes(groupByParam)) {
+      return new Response(JSON.stringify({ 
+        error: 'Invalid group_by parameter. Valid values are: date, campaign_id, zone_id, country' 
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Build SQL query
+    let sqlWhereClauses: string[] = [];
+    const queryParams: any[] = [];
+
+    // Add time range filters
+    sqlWhereClauses.push('event_time >= ?');
+    queryParams.push(from);
+    
+    sqlWhereClauses.push('event_time <= ?');
+    queryParams.push(to);
+
+    // Add campaign filter if provided
+    if (campaignIdsParam) {
+      const campaignIdList = campaignIdsParam.split(',').map(id => id.trim());
+      sqlWhereClauses.push(`campaign_id IN (${campaignIdList.map(() => '?').join(', ')})`);
+      queryParams.push(...campaignIdList);
+    }
+
+    // Add zone filter if provided
+    if (zoneIdsParam) {
+      const zoneIdList = zoneIdsParam.split(',').map(id => id.trim());
+      sqlWhereClauses.push(`zone_id IN (${zoneIdList.map(() => '?').join(', ')})`);
+      queryParams.push(...zoneIdList);
+    }
+
+    // Determine group by clause and select statement
+    let groupByClause = '';
+    let selectClause = '';
+    
+    switch (groupByParam) {
+      case 'date':
+        // Group by date using SQLite date function
+        groupByClause = "strftime('%Y-%m-%d', datetime(event_time/1000, 'unixepoch'))";
+        selectClause = `${groupByClause} as date`;
+        break;
+      case 'campaign_id':
+        groupByClause = 'campaign_id';
+        selectClause = 'campaign_id';
+        break;
+      case 'zone_id':
+        groupByClause = 'zone_id';
+        selectClause = 'zone_id';
+        break;
+      case 'country':
+        groupByClause = 'country';
+        selectClause = 'country';
+        break;
+    }
+    
+    // Build the final SQL query
+    const sql = `
+      SELECT 
+        ${selectClause},
+        SUM(CASE WHEN event_type IN ('click', 'unsold', 'fallback') THEN 1 ELSE 0 END) as impressions,
+        SUM(CASE WHEN event_type = 'click' THEN 1 ELSE 0 END) as clicks,
+        SUM(CASE WHEN event_type = 'unsold' THEN 1 ELSE 0 END) as unsold,
+        SUM(CASE WHEN event_type = 'fallback' THEN 1 ELSE 0 END) as fallbacks,
+        CASE 
+          WHEN SUM(CASE WHEN event_type IN ('click', 'unsold', 'fallback') THEN 1 ELSE 0 END) > 0 
+          THEN ROUND((SUM(CASE WHEN event_type = 'click' THEN 1 ELSE 0 END) * 100.0) / 
+               SUM(CASE WHEN event_type IN ('click', 'unsold', 'fallback') THEN 1 ELSE 0 END), 2)
+          ELSE 0 
+        END as ctr
+      FROM ad_events
+      WHERE ${sqlWhereClauses.join(' AND ')}
+      GROUP BY ${groupByClause}
+      ORDER BY ${groupByParam === 'campaign_id' || groupByParam === 'zone_id' ? groupByParam : 2} DESC
+    `;
+
+    // Execute query
+    const result = await env.DB.prepare(sql).bind(...queryParams).all();
+    
+    if (result.error) {
+      throw new Error(`Database error: ${result.error}`);
+    }
+
+    // Return response
+    return new Response(JSON.stringify({
+      stats: result.results || [],
+      period: {
+        from,
+        to
+      }
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    console.error('Error fetching stats:', error);
+    return new Response(JSON.stringify({ 
+      error: 'Error fetching statistics'
+    }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
     });

@@ -10,7 +10,7 @@ This document describes the Lite Ad Server API endpoints, authentication, and us
   - [Targeting Rule Types](#targeting-rule-types-api)
   - [Zones](#zones-api)
   - [Ad Events](#ad-events-api)
-  - [Statistics](#statistics-api--coming-soon)
+  - [Statistics](#statistics-api)
 - [Error Responses](#error-responses)
 - [Rate Limiting](#rate-limiting)
 
@@ -646,14 +646,130 @@ curl -H "Authorization: Bearer your-api-key-here" \
 }
 ```
 
-## Statistics API ⏳ (Coming Soon)
+## Statistics API
 
-The Statistics API will provide performance metrics and analytics for your campaigns and zones.
+The Statistics API provides performance metrics and analytics for your campaigns and zones.
 
-Planned endpoints:
-- `GET /api/stats/campaigns/:id` - Get statistics for a campaign
-- `GET /api/stats/zones/:id` - Get statistics for a zone
-- `GET /api/stats/clicks` - Get detailed click data
+### Get Statistics
+
+Retrieves aggregated statistics based on various filters and grouping options.
+
+**Endpoint**: `GET /api/stats`
+
+**Authentication**: Required
+
+**Query Parameters**:
+
+| Parameter    | Type    | Description                                                | Default           |
+|--------------|---------|------------------------------------------------------------| -----------------|
+| from         | integer | Start timestamp in milliseconds                            | Start of current day |
+| to           | integer | End timestamp in milliseconds                              | Current timestamp |
+| campaign_ids | string  | Comma-separated list of campaign IDs to filter by          | (all)            |
+| zone_ids     | string  | Comma-separated list of zone IDs to filter by              | (all)            |
+| group_by     | string  | Field to group by (date, campaign_id, zone_id, country)    | date             |
+
+**Example Request**:
+
+```bash
+curl -H "Authorization: Bearer your-api-key-here" \
+  "https://your-api-url.com/api/stats?from=1657152000000&to=1657238400000&campaign_ids=1,2&group_by=date"
+```
+
+**Example Response**:
+
+```json
+{
+  "stats": [
+    {
+      "date": "2022-07-07",
+      "direct_impressions": 1250,
+      "impressions": 1415,
+      "clicks": 75,
+      "unsold": 120,
+      "fallbacks": 45,
+      "ctr": 5.3
+    },
+    {
+      "date": "2022-07-06",
+      "direct_impressions": 980,
+      "impressions": 1100,
+      "clicks": 45,
+      "unsold": 90,
+      "fallbacks": 30,
+      "ctr": 4.09
+    }
+  ],
+  "period": {
+    "from": 1657152000000,
+    "to": 1657238400000
+  }
+}
+```
+
+**Response Fields**:
+
+| Field            | Description                                                            |
+|------------------|------------------------------------------------------------------------|
+| direct_impressions| Number of explicitly recorded impression events                       |
+| impressions      | Total ad requests (sum of clicks, unsold, and fallbacks)               |
+| clicks           | Number of ad clicks recorded                                           |
+| unsold           | Number of requests with no matching campaigns and no fallback URL      |
+| fallbacks        | Number of requests redirected to a fallback URL (no matching campaigns)|
+| ctr              | Click-through rate percentage (clicks / impressions × 100)             |
+
+**Note:** The CTR is calculated using `impressions` (total of clicks, unsold, and fallbacks) as the denominator, which represents the total number of ad requests.
+
+**Example: Group by campaign_id**
+
+```bash
+curl -H "Authorization: Bearer your-api-key-here" \
+  "https://your-api-url.com/api/stats?from=1657152000000&to=1657238400000&group_by=campaign_id"
+```
+
+**Response**:
+
+```json
+{
+  "stats": [
+    {
+      "campaign_id": 1,
+      "direct_impressions": 750,
+      "impressions": 850,
+      "clicks": 42,
+      "unsold": 8,
+      "fallbacks": 0,
+      "ctr": 4.94
+    },
+    {
+      "campaign_id": 2,
+      "direct_impressions": 680,
+      "impressions": 750,
+      "clicks": 35,
+      "unsold": 25,
+      "fallbacks": 10,
+      "ctr": 4.67
+    }
+  ],
+  "period": {
+    "from": 1657152000000,
+    "to": 1657238400000
+  }
+}
+```
+
+**Example: Group by zone_id**
+
+```bash
+curl -H "Authorization: Bearer your-api-key-here" \
+  "https://your-api-url.com/api/stats?from=1657152000000&to=1657238400000&group_by=zone_id"
+```
+
+**Example: Group by country**
+
+```bash
+curl -H "Authorization: Bearer your-api-key-here" \
+  "https://your-api-url.com/api/stats?from=1657152000000&to=1657238400000&group_by=country"
+```
 
 ## Error Responses
 

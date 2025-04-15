@@ -1,268 +1,190 @@
+/**
+ * Stats API routes
+ */
 import { FastifyInstance } from 'fastify';
-import { ClickStats } from '../models/Click';
 
 /**
- * Statistics routes
+ * Gets start of day timestamp
+ */
+function startOfDay(date: Date): number {
+  const startOfDayDate = new Date(date);
+  startOfDayDate.setHours(0, 0, 0, 0);
+  return startOfDayDate.getTime();
+}
+
+/**
+ * Stats routes
  */
 export async function statRoutes(fastify: FastifyInstance) {
   /**
-   * Get campaign stats
+   * Get aggregated statistics
+   * 
+   * Returns aggregated stats based on group_by and other filters
    */
-  fastify.get('/campaigns/:id', async (request) => {
-    const { id } = request.params as { id: string };
-    const { start, end } = request.query as { start?: string; end?: string };
-    
-    const startDate = start ? new Date(start).getTime() : Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const endDate = end ? new Date(end).getTime() : Date.now();
-    
-    // Mock stats response
-    return {
-      campaign_id: id,
-      total_clicks: 250,
-      by_country: [
-        {
-          country: 'US',
-          clicks: 120,
-          percentage: 48
-        },
-        {
-          country: 'CA',
-          clicks: 80,
-          percentage: 32
-        },
-        {
-          country: 'GB',
-          clicks: 50,
-          percentage: 20
+  fastify.get('/', {
+    schema: {
+      querystring: {
+        type: 'object',
+        properties: {
+          from: { type: 'integer', description: 'Start timestamp (defaults to start of current day)' },
+          to: { type: 'integer', description: 'End timestamp' },
+          campaign_ids: { type: 'string', description: 'Comma-separated list of campaign IDs' },
+          zone_ids: { type: 'string', description: 'Comma-separated list of zone IDs' },
+          group_by: { 
+            type: 'string', 
+            enum: ['date', 'campaign_id', 'zone_id', 'country'], 
+            default: 'date', 
+            description: 'Field to group statistics by' 
+          }
         }
-      ],
-      by_device: [
-        {
-          device_type: 'desktop',
-          clicks: 150,
-          percentage: 60
-        },
-        {
-          device_type: 'mobile',
-          clicks: 80,
-          percentage: 32
-        },
-        {
-          device_type: 'tablet',
-          clicks: 20,
-          percentage: 8
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            stats: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  date: { type: 'string', nullable: true },
+                  campaign_id: { type: 'integer', nullable: true },
+                  zone_id: { type: 'integer', nullable: true },
+                  country: { type: 'string', nullable: true },
+                  impressions: { type: 'integer' },
+                  clicks: { type: 'integer' },
+                  unsold: { type: 'integer' },
+                  fallbacks: { type: 'integer' },
+                  ctr: { type: 'number' }
+                }
+              }
+            },
+            period: {
+              type: 'object',
+              properties: {
+                from: { type: 'integer' },
+                to: { type: 'integer' }
+              }
+            }
+          }
         }
-      ],
-      clicks_by_day: [
-        {
-          date: '2023-10-25',
-          clicks: 35
-        },
-        {
-          date: '2023-10-26',
-          clicks: 42
-        },
-        {
-          date: '2023-10-27',
-          clicks: 38
-        }
-      ],
-      period: {
-        start: new Date(startDate).toISOString().split('T')[0],
-        end: new Date(endDate).toISOString().split('T')[0]
       }
-    };
-  });
+    }
+  }, async (request, reply) => {
+    try {
+      const { d1Env } = fastify;
+      
+      if (!d1Env?.DB) {
+        return reply.code(500).send({ error: 'Database connection not available' });
+      }
 
-  /**
-   * Get zone stats
-   */
-  fastify.get('/zones/:id', async (request) => {
-    const { id } = request.params as { id: string };
-    const { start, end } = request.query as { start?: string; end?: string };
-    
-    const startDate = start ? new Date(start).getTime() : Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const endDate = end ? new Date(end).getTime() : Date.now();
-    
-    // Mock stats response
-    return {
-      zone_id: id,
-      total_clicks: 580,
-      campaign_stats: [
-        {
-          campaign_id: 'campaign1',
-          campaign_name: 'Test Campaign',
-          clicks: 250
-        },
-        {
-          campaign_id: 'campaign2',
-          campaign_name: 'Another Campaign',
-          clicks: 330
-        }
-      ],
-      by_country: [
-        {
-          country: 'US',
-          clicks: 290,
-          percentage: 50
-        },
-        {
-          country: 'CA',
-          clicks: 174,
-          percentage: 30
-        },
-        {
-          country: 'GB',
-          clicks: 116,
-          percentage: 20
-        }
-      ],
-      clicks_by_day: [
-        {
-          date: '2023-10-25',
-          clicks: 85
-        },
-        {
-          date: '2023-10-26',
-          clicks: 82
-        },
-        {
-          date: '2023-10-27',
-          clicks: 88
-        }
-      ],
-      period: {
-        start: new Date(startDate).toISOString().split('T')[0],
-        end: new Date(endDate).toISOString().split('T')[0]
-      }
-    };
-  });
-
-  /**
-   * Get summary stats
-   */
-  fastify.get('/summary', async (request) => {
-    const { start, end } = request.query as { start?: string; end?: string };
-    
-    const startDate = start ? new Date(start).getTime() : Date.now() - 30 * 24 * 60 * 60 * 1000;
-    const endDate = end ? new Date(end).getTime() : Date.now();
-    
-    // Mock summary stats
-    return {
-      total_clicks: 3250,
-      active_campaigns: 12,
-      active_zones: 8,
-      top_campaigns: [
-        {
-          campaign_id: 'campaign1',
-          campaign_name: 'Test Campaign',
-          clicks: 980
-        },
-        {
-          campaign_id: 'campaign2',
-          campaign_name: 'Another Campaign',
-          clicks: 720
-        },
-        {
-          campaign_id: 'campaign3',
-          campaign_name: 'Third Campaign',
-          clicks: 550
-        }
-      ],
-      top_zones: [
-        {
-          zone_id: 'zone1',
-          zone_name: 'Homepage Banner',
-          clicks: 1200
-        },
-        {
-          zone_id: 'zone2',
-          zone_name: 'Sidebar Ad',
-          clicks: 950
-        }
-      ],
-      by_country: [
-        {
-          country: 'US',
-          clicks: 1625,
-          percentage: 50
-        },
-        {
-          country: 'CA',
-          clicks: 975,
-          percentage: 30
-        },
-        {
-          country: 'GB',
-          clicks: 650,
-          percentage: 20
-        }
-      ],
-      period: {
-        start: new Date(startDate).toISOString().split('T')[0],
-        end: new Date(endDate).toISOString().split('T')[0]
-      }
-    };
-  });
-  
-  /**
-   * Get raw click data
-   */
-  fastify.get('/clicks', async (request) => {
-    const { campaign_id, zone_id, country, device_type, start, end, limit, offset } = 
-      request.query as { 
-        campaign_id?: string; 
-        zone_id?: string; 
-        country?: string; 
-        device_type?: string;
-        start?: string;
-        end?: string;
-        limit?: string;
-        offset?: string;
+      const { DB } = d1Env;
+      const query = request.query as {
+        from?: number;
+        to?: number;
+        campaign_ids?: string;
+        zone_ids?: string;
+        group_by?: 'date' | 'campaign_id' | 'zone_id' | 'country';
       };
-    
-    const startDate = start ? new Date(start).getTime() : Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const endDate = end ? new Date(end).getTime() : Date.now();
-    const limitNum = limit ? parseInt(limit, 10) : 20;
-    const offsetNum = offset ? parseInt(offset, 10) : 0;
-    
-    // Mock raw click data
-    return {
-      clicks: [
-        {
-          id: 'click1',
-          campaign_id: 'campaign1',
-          zone_id: 'zone1',
-          country: 'US',
-          device_type: 'desktop',
-          timestamp: Date.now() - 3600000, // 1 hour ago
-          ip: '192.168.1.1', // Masked for privacy in a real implementation
-          user_agent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          referer: 'https://example.com/page1'
-        },
-        {
-          id: 'click2',
-          campaign_id: 'campaign1',
-          zone_id: 'zone1',
-          country: 'CA',
-          device_type: 'mobile',
-          timestamp: Date.now() - 7200000, // 2 hours ago
-          ip: '192.168.1.2',
-          user_agent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)',
-          referer: 'https://example.com/page2'
-        }
-      ],
-      total: 2,
-      filter: {
-        campaign_id,
-        zone_id,
-        country,
-        device_type,
-        start: new Date(startDate).toISOString().split('T')[0],
-        end: new Date(endDate).toISOString().split('T')[0],
-        limit: limitNum,
-        offset: offsetNum
+      
+      const { 
+        from = startOfDay(new Date()), 
+        to = Date.now(), 
+        campaign_ids, 
+        zone_ids, 
+        group_by = 'date'
+      } = query;
+
+      // Build SQL query
+      let sqlWhereClauses: string[] = [];
+      const queryParams: any[] = [];
+
+      // Add time range filters
+      sqlWhereClauses.push('event_time >= ?');
+      queryParams.push(from);
+      
+      sqlWhereClauses.push('event_time <= ?');
+      queryParams.push(to);
+
+      // Add campaign filter if provided
+      if (campaign_ids) {
+        const campaignIdList = campaign_ids.split(',').map(id => id.trim());
+        sqlWhereClauses.push(`campaign_id IN (${campaignIdList.map(() => '?').join(', ')})`);
+        queryParams.push(...campaignIdList);
       }
-    };
+
+      // Add zone filter if provided
+      if (zone_ids) {
+        const zoneIdList = zone_ids.split(',').map(id => id.trim());
+        sqlWhereClauses.push(`zone_id IN (${zoneIdList.map(() => '?').join(', ')})`);
+        queryParams.push(...zoneIdList);
+      }
+
+      // Determine group by clause and select statement
+      let groupByClause = '';
+      let selectClause = '';
+      
+      switch (group_by) {
+        case 'date':
+          // Group by date using SQLite date function
+          groupByClause = "strftime('%Y-%m-%d', datetime(event_time/1000, 'unixepoch'))";
+          selectClause = `${groupByClause} as date`;
+          break;
+        case 'campaign_id':
+          groupByClause = 'campaign_id';
+          selectClause = 'campaign_id';
+          break;
+        case 'zone_id':
+          groupByClause = 'zone_id';
+          selectClause = 'zone_id';
+          break;
+        case 'country':
+          groupByClause = 'country';
+          selectClause = 'country';
+          break;
+      }
+      
+      // Build the final SQL query
+      const sql = `
+        SELECT 
+          ${selectClause},
+          SUM(CASE WHEN event_type IN ('click', 'unsold', 'fallback') THEN 1 ELSE 0 END) as impressions,
+          SUM(CASE WHEN event_type = 'click' THEN 1 ELSE 0 END) as clicks,
+          SUM(CASE WHEN event_type = 'unsold' THEN 1 ELSE 0 END) as unsold,
+          SUM(CASE WHEN event_type = 'fallback' THEN 1 ELSE 0 END) as fallbacks,
+          CASE 
+            WHEN SUM(CASE WHEN event_type IN ('click', 'unsold', 'fallback') THEN 1 ELSE 0 END) > 0 
+            THEN ROUND((SUM(CASE WHEN event_type = 'click' THEN 1 ELSE 0 END) * 100.0) / 
+                 SUM(CASE WHEN event_type IN ('click', 'unsold', 'fallback') THEN 1 ELSE 0 END), 2)
+            ELSE 0 
+          END as ctr
+        FROM ad_events
+        WHERE ${sqlWhereClauses.join(' AND ')}
+        GROUP BY ${groupByClause}
+        ORDER BY ${groupByClause === 'campaign_id' || groupByClause === 'zone_id' ? groupByClause : 2} DESC
+      `;
+
+      // Execute query
+      const result = await DB.prepare(sql).bind(...queryParams).all();
+      
+      if (result.error) {
+        throw new Error(`Database error: ${result.error}`);
+      }
+
+      // Return response
+      return {
+        stats: result.results || [],
+        period: {
+          from,
+          to
+        }
+      };
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+      return reply.code(500).send({ 
+        error: 'Error fetching statistics',
+        details: process.env['NODE_ENV'] === 'development' ? String(error) : undefined
+      });
+    }
   });
 } 
