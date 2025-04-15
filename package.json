@@ -5,7 +5,9 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "dev": "wrangler dev src/workers/index.ts",
+    "dev": "node dev_scripts/js/start-server.js",
+    "dev:fixed-port": "wrangler dev src/workers/index.ts --port 8787",
+    "start": "node dev_scripts/js/start-server.js",
     "deploy": "wrangler publish",
     "predeploy": "npm run type-check && npm run lint",
     "lint": "eslint src --ext .ts",
