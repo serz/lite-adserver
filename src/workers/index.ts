@@ -665,6 +665,32 @@ async function deleteCampaign(campaignId: string, env: Env): Promise<Response> {
 }
 
 /**
+ * Replace macros in a URL with their actual values
+ */
+function replaceMacros(url: string, macroValues: {
+  click_id?: string | null,
+  zone_id?: string | null,
+  aff_sub_id?: string | null
+}): string {
+  let result = url;
+  
+  // Only replace if the value exists and isn't null
+  if (macroValues.click_id) {
+    result = result.replace(/{click_id}/g, macroValues.click_id);
+  }
+  
+  if (macroValues.zone_id) {
+    result = result.replace(/{zone_id}/g, macroValues.zone_id);
+  }
+  
+  if (macroValues.aff_sub_id) {
+    result = result.replace(/{aff_sub_id}/g, macroValues.aff_sub_id);
+  }
+  
+  return result;
+}
+
+/**
  * Handle ad serving requests
  */
 async function handleAdServing(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -777,7 +803,7 @@ async function handleTracking(request: Request, env: Env, ctx: ExecutionContext)
   const zoneId = parts[4] || '';
   
   // Extract sub_id from query parameters if present
-  const subId = url.searchParams.get('sub_id') || undefined;
+  const subId = url.searchParams.get('sub_id');
   
   if (!trackType || !campaignId) {
     return new Response('Invalid tracking URL', { status: 400 });
@@ -785,6 +811,9 @@ async function handleTracking(request: Request, env: Env, ctx: ExecutionContext)
   
   try {
     if (trackType === 'click') {
+      // Generate Snowflake ID for this event
+      const clickId = generateSnowflakeId().toString();
+      
       // Track click in database
       await recordClick(env.DB, {
         campaign_id: campaignId,
@@ -795,7 +824,8 @@ async function handleTracking(request: Request, env: Env, ctx: ExecutionContext)
         country: request.headers.get('CF-IPCountry') || undefined,
         device_type: detectDeviceType(request.headers.get('User-Agent') || ''),
         timestamp: Date.now(),
-        sub_id: subId
+        sub_id: subId || undefined,
+        click_id: clickId
       });
       
       // Fetch campaign redirect URL
@@ -805,8 +835,15 @@ async function handleTracking(request: Request, env: Env, ctx: ExecutionContext)
         return new Response('Invalid campaign', { status: 404 });
       }
       
-      // Redirect to campaign URL
-      return Response.redirect(campaign.redirect_url, 302);
+      // Replace macros in the redirect URL
+      const redirectUrl = replaceMacros(campaign.redirect_url, {
+        click_id: clickId,
+        zone_id: zoneId,
+        aff_sub_id: subId || null
+      });
+      
+      // Redirect to campaign URL with macros replaced
+      return Response.redirect(redirectUrl, 302);
     }
     
     return new Response('Unknown tracking type', { status: 400 });
@@ -916,11 +953,12 @@ async function recordClick(db: D1Database, clickData: {
   device_type?: string,
   timestamp: number,
   event_type?: string,
-  sub_id?: string
+  sub_id?: string,
+  click_id?: string
 }): Promise<void> {
   try {
-    // Generate Snowflake ID for this event
-    const snowflakeId = generateSnowflakeId();
+    // Generate Snowflake ID for this event if not provided
+    const snowflakeId = clickData.click_id ? clickData.click_id : generateSnowflakeId().toString();
     
     // Convert IDs to numbers for numeric IDs
     const campaignIdNum = clickData.campaign_id !== null ? parseId(clickData.campaign_id) : null;
@@ -987,7 +1025,7 @@ async function recordClick(db: D1Database, clickData: {
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
-      snowflakeId.toString(),
+      snowflakeId,
       clickData.sub_id || null,
       clickData.event_type || 'click',
       clickData.timestamp,
@@ -1003,7 +1041,7 @@ async function recordClick(db: D1Database, clickData: {
     ).run();
     
     const campaignIdText = campaignIdNum !== null ? campaignIdNum : 'NULL';
-    console.warn(`${clickData.event_type || 'Click'} event recorded with ID ${snowflakeId.toString()} for campaign ${campaignIdText}, zone ${zoneIdNum}`);
+    console.warn(`${clickData.event_type || 'Click'} event recorded with ID ${snowflakeId} for campaign ${campaignIdText}, zone ${zoneIdNum}`);
   } catch (error) {
     console.error('Error recording click event:', error);
   }
