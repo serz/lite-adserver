@@ -49,7 +49,7 @@ GET /track/click/:campaignId/:zoneId
 
 ### Admin API
 
-The Fastify-based Admin API provides endpoints for campaign and zone management. All API endpoints require authentication using an API key in the `Authorization` header (Bearer token format).
+The Admin API provides endpoints for campaign and zone management through Cloudflare Workers. All API endpoints require authentication using an API key in the `Authorization` header (Bearer token format).
 
 ```
 Authorization: Bearer your-api-key-here
@@ -60,7 +60,7 @@ Available API endpoints:
 - **Campaigns**: `/api/campaigns` - Manage ad campaigns
 - **Targeting Rule Types**: `/api/targeting-rule-types` - Get information about targeting rules
 - **Zones**: `/api/zones` - Manage ad placement zones
-- **Statistics**: `/api/stats` - View performance metrics (coming soon)
+- **Statistics**: `/api/stats` - View performance metrics
 
 For detailed API documentation, see [API Documentation](docs/api.md).
 

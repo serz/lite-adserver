@@ -2,7 +2,6 @@
  * Lite Ad Server - Cloudflare Worker Entry Point
  */
 
-// Note: We're not using CounterDO currently, but leaving the import for future frequency capping
 import { TargetingRule } from '../models/TargetingRule';
 import { CounterDO } from './counter';
 import { TargetingMethod } from '../models/Campaign';
@@ -10,7 +9,7 @@ import { parseAndValidateId, parseId, isValidId } from '../utils/idValidation';
 import { ensureString, ensureArray } from '../utils/typeGuards';
 import { generateSnowflakeId } from '../utils/snowflake';
 
-// Re-export the CounterDO class needed by the Durable Object binding
+// Re-export the CounterDO class needed by the Durable Object binding in wrangler.toml
 export { CounterDO };
 
 export interface Env {
@@ -850,7 +849,7 @@ async function fetchEligibleCampaigns(db: D1Database, zoneId: string, request: R
     ).all();
 
     if (!result.results || result.results.length === 0) {
-      console.log(`No campaigns found for zone ID: ${zoneId}`);
+      console.warn(`No campaigns found for zone ID: ${zoneId}`);
       return [];
     }
 
@@ -1004,7 +1003,7 @@ async function recordClick(db: D1Database, clickData: {
     ).run();
     
     const campaignIdText = campaignIdNum !== null ? campaignIdNum : 'NULL';
-    console.log(`${clickData.event_type || 'Click'} event recorded with ID ${snowflakeId.toString()} for campaign ${campaignIdText}, zone ${zoneIdNum}`);
+    console.warn(`${clickData.event_type || 'Click'} event recorded with ID ${snowflakeId.toString()} for campaign ${campaignIdText}, zone ${zoneIdNum}`);
   } catch (error) {
     console.error('Error recording click event:', error);
   }

@@ -106,12 +106,10 @@ The project uses TypeScript with strict type checking enabled. We've added sever
 
 ### Code Structure
 - `src/` - Contains all source code
-- `src/routes/` - API routes and handlers
 - `src/models/` - Data models
-- `src/services/` - Business logic
 - `src/utils/` - Utility functions
-- `src/middleware/` - Request processing middleware
-- `src/workers/` - Background processing logic
+- `src/types/` - TypeScript type definitions
+- `src/workers/` - Cloudflare Workers implementation
 - `migrations/` - Database migrations
 
 ### Workflow

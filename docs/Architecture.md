@@ -18,12 +18,9 @@ Lite Ad Server is a lightweight, serverless ad serving platform built using Clou
 lite-adserver/
 ├── src/                   # Source code
 │   ├── models/            # Data models
-│   ├── middleware/        # Request processing middleware
-│   ├── routes/            # API routes and handlers
-│   ├── services/          # Business logic
+│   ├── types/             # TypeScript type definitions
 │   ├── utils/             # Utility functions
-│   ├── workers/           # Background processing logic
-│   └── server.ts          # Main server entry point
+│   └── workers/           # Cloudflare Workers and related logic
 ├── migrations/            # Database migrations
 ├── dev_scripts/           # Development utilities
 │   ├── init_db.sh         # Database initialization script
@@ -34,11 +31,10 @@ lite-adserver/
 
 ## Data Flow
 
-1. **Request Handling**: Incoming requests are processed by the main server
-2. **Middleware Processing**: Authentication, logging, and other cross-cutting concerns
-3. **Route Handling**: Specific business logic based on the requested route
-4. **Service Layer**: Core business logic implementation
-5. **Data Access**: Models interact with the database
+1. **Request Handling**: Incoming requests are processed by the Cloudflare Worker
+2. **Route Handling**: Specific business logic based on the requested path
+3. **Database Access**: Direct interaction with the D1 database
+4. **Response Generation**: Appropriate responses based on the request and processing result
 
 ## Key Modules
 
