@@ -7,7 +7,6 @@
  * real-time analytics that don't require persistence.
  */
 
-// Interface for impression data
 interface ImpressionData {
   campaignId: number;
   zoneId?: number;
@@ -15,7 +14,6 @@ interface ImpressionData {
   timestamp?: number;
 }
 
-// Interface for click data
 interface ClickData {
   campaignId: number;
   zoneId?: number;
@@ -23,14 +21,12 @@ interface ClickData {
   timestamp?: number;
 }
 
-// Interface for frequency capping check
 interface CappingCheckData {
   campaignId: number;
   userId: string;
   cappingValue?: number;
 }
 
-// Interface for statistics response
 interface StatsResponse {
   campaignId: string | null;
   zoneId?: string | null;
@@ -86,36 +82,30 @@ export class CounterDO implements DurableObject {
       return new Response('Campaign ID required', { status: 400 });
     }
     
-    // Increment campaign impression counter
     const campaignKey = `campaign:${campaignId}:impressions`;
     let impressions = await this.state.storage.get(campaignKey) || 0;
     await this.state.storage.put(campaignKey, impressions + 1);
     
-    // If zone ID is provided, track zone-specific impressions
     if (zoneId) {
       const zoneKey = `zone:${zoneId}:impressions`;
       let zoneImpressions = await this.state.storage.get(zoneKey) || 0;
       await this.state.storage.put(zoneKey, zoneImpressions + 1);
       
-      // Track campaign-zone combination
       const campaignZoneKey = `campaign:${campaignId}:zone:${zoneId}:impressions`;
       let campaignZoneImpressions = await this.state.storage.get(campaignZoneKey) || 0;
       await this.state.storage.put(campaignZoneKey, campaignZoneImpressions + 1);
       
-      // Store daily stats
       const today = new Date().toISOString().split('T')[0];
       const dailyKey = `daily:${today}:campaign:${campaignId}:zone:${zoneId}:impressions`;
       let dailyImpressions = await this.state.storage.get(dailyKey) || 0;
       await this.state.storage.put(dailyKey, dailyImpressions + 1);
     }
     
-    // If user ID is provided, track user-specific impressions for capping
     if (userId) {
       const userKey = `user:${userId}:campaign:${campaignId}:impressions`;
       const userImpressions: number[] = await this.state.storage.get(userKey) || [];
       userImpressions.push(timestamp);
       
-      // Only keep impressions from the last 24 hours
       const recentImpressions = userImpressions.filter(
         (ts: number) => ts > Date.now() - 24 * 60 * 60 * 1000
       );
@@ -136,30 +126,25 @@ export class CounterDO implements DurableObject {
       return new Response('Campaign ID required', { status: 400 });
     }
     
-    // Increment campaign click counter
     const campaignKey = `campaign:${campaignId}:clicks`;
     let clicks = await this.state.storage.get(campaignKey) || 0;
     await this.state.storage.put(campaignKey, clicks + 1);
     
-    // If zone ID is provided, track zone-specific clicks
     if (zoneId) {
       const zoneKey = `zone:${zoneId}:clicks`;
       let zoneClicks = await this.state.storage.get(zoneKey) || 0;
       await this.state.storage.put(zoneKey, zoneClicks + 1);
       
-      // Track campaign-zone combination
       const campaignZoneKey = `campaign:${campaignId}:zone:${zoneId}:clicks`;
       let campaignZoneClicks = await this.state.storage.get(campaignZoneKey) || 0;
       await this.state.storage.put(campaignZoneKey, campaignZoneClicks + 1);
       
-      // Store daily stats
       const today = new Date().toISOString().split('T')[0];
       const dailyKey = `daily:${today}:campaign:${campaignId}:zone:${zoneId}:clicks`;
       let dailyClicks = await this.state.storage.get(dailyKey) || 0;
       await this.state.storage.put(dailyKey, dailyClicks + 1);
     }
     
-    // If user ID is provided, track user-specific clicks
     if (userId) {
       const userKey = `user:${userId}:campaign:${campaignId}:clicks`;
       const userClicks: number[] = await this.state.storage.get(userKey) || [];
@@ -183,7 +168,6 @@ export class CounterDO implements DurableObject {
     const userKey = `user:${userId}:campaign:${campaignId}:impressions`;
     const userImpressions: number[] = await this.state.storage.get(userKey) || [];
     
-    // Only count impressions from the last 24 hours
     const recentImpressions = userImpressions.filter(
       (ts: number) => ts > Date.now() - 24 * 60 * 60 * 1000
     );
@@ -217,21 +201,18 @@ export class CounterDO implements DurableObject {
     let ctr = 0;
     
     if (zoneId && date) {
-      // Get daily stats for specific campaign-zone combination
       const impressionsKey = `daily:${date}:campaign:${campaignId}:zone:${zoneId}:impressions`;
       const clicksKey = `daily:${date}:campaign:${campaignId}:zone:${zoneId}:clicks`;
       
       impressions = await this.state.storage.get(impressionsKey) || 0;
       clicks = await this.state.storage.get(clicksKey) || 0;
     } else if (zoneId) {
-      // Get total stats for specific campaign-zone combination
       const impressionsKey = `campaign:${campaignId}:zone:${zoneId}:impressions`;
       const clicksKey = `campaign:${campaignId}:zone:${zoneId}:clicks`;
       
       impressions = await this.state.storage.get(impressionsKey) || 0;
       clicks = await this.state.storage.get(clicksKey) || 0;
     } else {
-      // Get total campaign stats
       impressions = await this.state.storage.get(`campaign:${campaignId}:impressions`) || 0;
       clicks = await this.state.storage.get(`campaign:${campaignId}:clicks`) || 0;
     }
@@ -249,7 +230,9 @@ export class CounterDO implements DurableObject {
     
     return new Response(JSON.stringify(response), {
       status: 200,
-      headers: { 'content-type': 'application/json' }
+      headers: {
+        'content-type': 'application/json'
+      }
     });
   }
 } 

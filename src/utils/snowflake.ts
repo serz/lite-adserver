@@ -1,7 +1,7 @@
 /**
  * Snowflake ID Generator
  * 
- * This implementation generates unique, roughly sortable IDs based on the Twitter Snowflake algorithm.
+ * Generates unique, roughly sortable IDs based on the Twitter Snowflake algorithm.
  * All generated IDs are guaranteed to be positive numbers.
  * 
  * The ID structure:
@@ -13,20 +13,15 @@
  * The MSB (Most Significant Bit) is always 0 to ensure IDs are positive.
  */
 
-// Constants for bit shifts
 const EPOCH = 1609459200000; // 2021-01-01 as our custom epoch
-const TIMESTAMP_BITS = 41;   // Using 41 bits for timestamp (gives ~69 years from custom epoch)
-const WORKER_ID_BITS = 10;   // Using 10 bits for worker ID
-const SEQUENCE_BITS = 12;    // Using 12 bits for sequence
+const TIMESTAMP_BITS = 41;
+const WORKER_ID_BITS = 10;
+const SEQUENCE_BITS = 12;
 
-// Calculated constants
 const MAX_WORKER_ID = (1 << WORKER_ID_BITS) - 1; // 1023
 const MAX_SEQUENCE = (1 << SEQUENCE_BITS) - 1;   // 4095
-
-// The maximum timestamp value that can be represented with 41 bits
 const MAX_TIMESTAMP = (1n << BigInt(TIMESTAMP_BITS)) - 1n;
 
-// Bit shifts
 const WORKER_ID_SHIFT = SEQUENCE_BITS;
 const TIMESTAMP_SHIFT = SEQUENCE_BITS + WORKER_ID_BITS;
 
@@ -53,38 +48,30 @@ export class SnowflakeIdGenerator {
   public nextId(): bigint {
     let timestamp = Date.now();
 
-    // Ensure we don't exceed the timestamp limit
     const adjustedTimestamp = timestamp - EPOCH;
     if (adjustedTimestamp > Number(MAX_TIMESTAMP)) {
       throw new Error('Timestamp exceeds the maximum value supported by this Snowflake implementation');
     }
 
-    // Clock moved backwards - throw error or wait
     if (timestamp < this.lastTimestamp) {
       throw new Error(`Clock moved backwards. Refusing to generate ID for ${this.lastTimestamp - timestamp} milliseconds.`);
     }
 
-    // Same millisecond - increment sequence
     if (timestamp === this.lastTimestamp) {
       this.sequence = (this.sequence + 1) & MAX_SEQUENCE;
-      // Sequence overflow - wait for next millisecond
       if (this.sequence === 0) {
         timestamp = this.waitNextMillis(this.lastTimestamp);
       }
     } else {
-      // Different millisecond - reset sequence
       this.sequence = 0;
     }
 
     this.lastTimestamp = timestamp;
 
-    // Compose the 64-bit ID from our components
-    // The result is guaranteed to be positive because we're using 63 bits total (MSB is always 0)
     const id = BigInt(adjustedTimestamp) << BigInt(TIMESTAMP_SHIFT) |
               BigInt(this.workerId) << BigInt(WORKER_ID_SHIFT) |
               BigInt(this.sequence);
     
-    // Verify that the ID is positive (this check is for debugging/validation and could be removed in production)
     if (id < 0n) {
       throw new Error(`Generated a negative Snowflake ID: ${id}. This should never happen.`);
     }
@@ -154,7 +141,7 @@ export class SnowflakeIdGenerator {
   }
 }
 
-// Singleton instance for use throughout the application
+// Singleton instance
 let idGenerator: SnowflakeIdGenerator | null = null;
 
 /**
