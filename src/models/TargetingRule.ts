@@ -17,7 +17,6 @@ export interface TargetingRule {
   targeting_rule_type_id: number;
   targeting_method: TargetingMethod;
   rule: string;
-  weight: number;
   created_at: number;
   updated_at: number;
 }
@@ -27,13 +26,11 @@ export interface CreateTargetingRuleRequest {
   targeting_rule_type_id: number;
   targeting_method: TargetingMethod;
   rule: string;
-  weight?: number;
 }
 
 export interface UpdateTargetingRuleRequest {
   targeting_method?: TargetingMethod;
   rule?: string;
-  weight?: number;
 }
 
 // Predefined rule types - match the values used in the database schema

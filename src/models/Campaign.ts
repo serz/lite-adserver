@@ -23,7 +23,6 @@ export interface TargetingRule {
   targeting_rule_type_id: number;
   targeting_method: TargetingMethod;
   rule: string;
-  weight: number;
   created_at: number;
   updated_at: number;
 }
@@ -54,7 +53,6 @@ export interface CreateCampaignRequest {
     targeting_rule_type_id: number;
     targeting_method: TargetingMethod;
     rule: string;
-    weight?: number;
   }[];
 }
 

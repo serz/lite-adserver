@@ -44,7 +44,6 @@ CREATE TABLE IF NOT EXISTS targeting_rules (
   targeting_rule_type_id INTEGER NOT NULL,
   targeting_method TEXT CHECK(targeting_method IN ('whitelist', 'blacklist')) NOT NULL,
   rule TEXT NOT NULL,
-  weight INTEGER DEFAULT 100,
   created_at INTEGER NOT NULL DEFAULT (unixepoch()),
   updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
   FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,

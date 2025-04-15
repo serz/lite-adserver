@@ -391,14 +391,13 @@ async function createCampaign(request: Request, env: Env): Promise<Response> {
     // Insert targeting rules for the campaign
     const ruleInsertions = campaignData.targeting_rules.map((rule: any) => {
       return env.DB.prepare(`
-        INSERT INTO targeting_rules (campaign_id, targeting_rule_type_id, targeting_method, rule, weight, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO targeting_rules (campaign_id, targeting_rule_type_id, targeting_method, rule, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
       `).bind(
         campaignId,
         rule.targeting_rule_type_id,
         rule.targeting_method,
         rule.rule,
-        rule.weight || 100,
         timestamp,
         timestamp
       ).run();
@@ -777,7 +776,7 @@ async function fetchEligibleCampaigns(db: D1Database, zoneId: string, request: R
     // Query for active campaigns that target this zone
     const result = await db.prepare(`
       SELECT c.id, c.name, c.redirect_url, c.status, tr.id as rule_id, 
-             tr.targeting_rule_type_id, tr.targeting_method, tr.rule, tr.weight
+             tr.targeting_rule_type_id, tr.targeting_method, tr.rule
       FROM campaigns c
       JOIN targeting_rules tr ON tr.campaign_id = c.id
       JOIN targeting_rule_types trt ON tr.targeting_rule_type_id = trt.id
@@ -787,7 +786,6 @@ async function fetchEligibleCampaigns(db: D1Database, zoneId: string, request: R
       AND trt.name = 'Zone ID'
       AND tr.targeting_method = 'whitelist'
       AND (tr.rule = ? OR tr.rule LIKE ? OR tr.rule LIKE ? OR tr.rule LIKE ?)
-      ORDER BY tr.weight DESC
     `).bind(
       zoneIdNum.toString(),
       `${zoneIdNum},%`,
@@ -813,7 +811,6 @@ async function fetchEligibleCampaigns(db: D1Database, zoneId: string, request: R
         targeting_rule_type_id: number;
         targeting_method: string;
         rule: string;
-        weight: number;
       };
       
       const campaignId = rowData.id;
@@ -836,7 +833,6 @@ async function fetchEligibleCampaigns(db: D1Database, zoneId: string, request: R
           targeting_rule_type_id: rowData.targeting_rule_type_id,
           targeting_method: rowData.targeting_method as TargetingMethod,
           rule: rowData.rule,
-          weight: rowData.weight,
           created_at: 0, // We don't need these for selection
           updated_at: 0  // We don't need these for selection
         });

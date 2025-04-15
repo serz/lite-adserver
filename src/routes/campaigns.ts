@@ -217,7 +217,6 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                   targeting_rule_type_id: { type: 'string' },
                   targeting_method: { type: 'string' },
                   rule: { type: 'string' },
-                  weight: { type: 'integer' },
                   created_at: { type: 'integer' },
                   updated_at: { type: 'integer' },
                 },
@@ -255,7 +254,6 @@ export async function campaignRoutes(fastify: FastifyInstance) {
             targeting_rule_type_id: TARGETING_RULE_TYPES.ZONE_ID,
             targeting_method: 'whitelist',
             rule: 'zone1,zone2',
-            weight: 100,
             created_at: now,
             updated_at: now,
           },
@@ -265,7 +263,6 @@ export async function campaignRoutes(fastify: FastifyInstance) {
             targeting_rule_type_id: TARGETING_RULE_TYPES.GEO,
             targeting_method: 'whitelist',
             rule: 'US,CA',
-            weight: 100,
             created_at: now,
             updated_at: now,
           },
@@ -275,7 +272,6 @@ export async function campaignRoutes(fastify: FastifyInstance) {
             targeting_rule_type_id: TARGETING_RULE_TYPES.CAPPING,
             targeting_method: 'whitelist',
             rule: '10',
-            weight: 100,
             created_at: now,
             updated_at: now,
           }
@@ -310,7 +306,6 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                 targeting_rule_type_id: { type: 'string', minLength: 1 },
                 targeting_method: { type: 'string', enum: ['whitelist', 'blacklist'] },
                 rule: { type: 'string', minLength: 1 },
-                weight: { type: 'integer', minimum: 1, maximum: 100, default: 100 },
               }
             }
           }
@@ -452,7 +447,6 @@ export async function campaignRoutes(fastify: FastifyInstance) {
             targeting_rule_type_id: TARGETING_RULE_TYPES.ZONE_ID,
             targeting_method: 'whitelist',
             rule: 'zone1,zone2',
-            weight: 100,
             created_at: now,
             updated_at: now,
           }
