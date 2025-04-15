@@ -6,9 +6,10 @@ This document describes the Lite Ad Server API endpoints, authentication, and us
 
 - [Authentication](#authentication)
 - [Resources](#resources)
-  - [Campaigns](#campaigns-api--implemented)
-  - [Targeting Rule Types](#targeting-rule-types-api--implemented)
-  - [Zones](#zones-api--implemented)
+  - [Campaigns](#campaigns-api)
+  - [Targeting Rule Types](#targeting-rule-types-api)
+  - [Zones](#zones-api)
+  - [Ad Events](#ad-events-api)
   - [Statistics](#statistics-api--coming-soon)
 - [Error Responses](#error-responses)
 - [Rate Limiting](#rate-limiting)
@@ -51,7 +52,7 @@ The API uses standard HTTP response codes:
 - `404 Not Found`: The requested resource was not found
 - `500 Server Error`: An error occurred on the server
 
-## Campaigns API ✅ (Implemented)
+## Campaigns API
 
 The Campaigns API allows you to manage advertising campaigns.
 
@@ -310,7 +311,7 @@ curl -X DELETE \
 
 **Response**: 204 No Content
 
-## Targeting Rule Types API ✅ (Implemented)
+## Targeting Rule Types API
 
 The Targeting Rule Types API allows you to retrieve information about all available targeting rule types.
 
@@ -358,7 +359,7 @@ curl -H "Authorization: Bearer your-api-key-here" \
 }
 ```
 
-## Zones API ✅ (Implemented)
+## Zones API
 
 The Zones API allows you to manage ad placement zones across your websites.
 
@@ -566,6 +567,84 @@ curl -X DELETE \
 ```
 
 **Response**: 204 No Content
+
+## Ad Events API
+
+The Ad Events API allows you to retrieve ad interaction events like impressions and clicks.
+
+### List Ad Events
+
+Retrieves a paginated list of ad events with filtering options.
+
+**Endpoint**: `GET /api/ad_events`
+
+**Authentication**: Required
+
+**Query Parameters**:
+
+| Parameter  | Type    | Description                                                 | Default    |
+|------------|---------|-------------------------------------------------------------|------------|
+| event_type | string  | Filter by event type (impression, click, conversion)        | (all)      |
+| campaign_id| string  | Filter by campaign ID                                       | (all)      |
+| zone_id    | string  | Filter by zone ID                                           | (all)      |
+| country    | string  | Filter by country code                                      | (all)      |
+| device_type| string  | Filter by device type (desktop, mobile, tablet)             | (all)      |
+| start_time | integer | Filter events after this timestamp                          | (all)      |
+| end_time   | integer | Filter events before this timestamp                          | (all)      |
+| limit      | integer | Number of results per page (1-100)                          | 20         |
+| offset     | integer | Number of results to skip                                   | 0          |
+| sort       | string  | Field to sort by (id, event_time, event_type, campaign_id)  | event_time |
+| order      | string  | Sort order (asc, desc)                                      | desc       |
+
+**Example Request**:
+
+```bash
+curl -H "Authorization: Bearer your-api-key-here" \
+  "https://your-api-url.com/api/ad_events?event_type=click&limit=10&sort=event_time&order=desc"
+```
+
+**Example Response**:
+
+```json
+{
+  "ad_events": [
+    {
+      "id": 1,
+      "event_type": "click",
+      "event_time": 1657152000000,
+      "campaign_id": 1,
+      "zone_id": 2,
+      "ip": "192.168.1.1",
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      "referer": "https://example.com/page",
+      "country": "US",
+      "device_type": "desktop",
+      "browser": "Chrome",
+      "os": "Windows"
+    },
+    {
+      "id": 2,
+      "event_type": "impression",
+      "event_time": 1657151000000,
+      "campaign_id": 2,
+      "zone_id": 1,
+      "ip": "192.168.1.2",
+      "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X)",
+      "referer": "https://example.com/other-page",
+      "country": "CA",
+      "device_type": "mobile",
+      "browser": "Safari",
+      "os": "iOS"
+    }
+  ],
+  "pagination": {
+    "total": 42,
+    "limit": 10,
+    "offset": 0,
+    "has_more": true
+  }
+}
+```
 
 ## Statistics API ⏳ (Coming Soon)
 

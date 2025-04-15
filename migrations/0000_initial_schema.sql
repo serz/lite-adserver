@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS campaigns (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   redirect_url TEXT,
-  start_date INTEGER NOT NULL,
+  start_date INTEGER,
   end_date INTEGER,
   status TEXT CHECK(status IN ('active', 'paused', 'archived')) DEFAULT 'paused',
   created_at INTEGER NOT NULL DEFAULT (unixepoch()),
@@ -50,12 +50,13 @@ CREATE TABLE IF NOT EXISTS targeting_rules (
   FOREIGN KEY (targeting_rule_type_id) REFERENCES targeting_rule_types(id)
 );
 
--- Unified ad events table (replaces clicks)
+-- Unified ad events table
 CREATE TABLE IF NOT EXISTS ad_events (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id BIGINT PRIMARY KEY,                        -- Snowflake ID
+  sub_id TEXT,                                  -- Additional identifier
   event_type TEXT NOT NULL,                     -- 'impression', 'click', 'conversion', etc.
   event_time INTEGER NOT NULL DEFAULT (unixepoch()), -- Unix timestamp
-  campaign_id INTEGER NOT NULL,
+  campaign_id INTEGER,
   zone_id INTEGER NOT NULL,
   ip TEXT,
   user_agent TEXT,
@@ -82,3 +83,4 @@ CREATE INDEX idx_ad_events_time ON ad_events(event_time);
 CREATE INDEX idx_ad_events_type ON ad_events(event_type);
 CREATE INDEX idx_ad_events_country ON ad_events(country);
 CREATE INDEX idx_ad_events_device ON ad_events(device_type);
+CREATE INDEX idx_ad_events_sub_id ON ad_events(sub_id);

@@ -8,6 +8,7 @@ import { CounterDO } from './counter';
 import { TargetingMethod } from '../models/Campaign';
 import { parseAndValidateId, parseId, isValidId } from '../utils/idValidation';
 import { ensureString, ensureArray } from '../utils/typeGuards';
+import { generateSnowflakeId } from '../utils/snowflake';
 
 // Re-export the CounterDO class needed by the Durable Object binding
 export { CounterDO };
@@ -88,6 +89,11 @@ async function handleApiRequest(request: Request, env: Env, ctx: ExecutionContex
   // Handle zones routes
   if (path.startsWith('/api/zones')) {
     return handleZoneApiRequests(request, env);
+  }
+  
+  // Handle ad events routes
+  if (path.startsWith('/api/ad_events') && request.method === 'GET') {
+    return await listAdEvents(request, env);
   }
   
   // Handle stats routes (to be implemented)
@@ -342,8 +348,9 @@ async function createCampaign(request: Request, env: Env): Promise<Response> {
       });
     }
     
-    if (!campaignData.start_date || typeof campaignData.start_date !== 'number') {
-      return new Response(JSON.stringify({ error: 'Start date is required' }), {
+    // Update start_date validation to be optional
+    if (campaignData.start_date !== undefined && typeof campaignData.start_date !== 'number') {
+      return new Response(JSON.stringify({ error: 'Start date must be a number when provided' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' }
       });
@@ -367,7 +374,7 @@ async function createCampaign(request: Request, env: Env): Promise<Response> {
     `).bind(
       campaignData.name,
       campaignData.redirect_url,
-      campaignData.start_date,
+      campaignData.start_date || null,
       campaignData.end_date || null,
       status,
       timestamp,
@@ -581,8 +588,10 @@ function validateCampaignUpdateData(data: any): string | null {
   }
   
   // Validate start_date if provided
-  if ('start_date' in data && (typeof data.start_date !== 'number' || data.start_date <= 0)) {
-    return 'Start date must be a positive number (timestamp)';
+  if ('start_date' in data) {
+    if (data.start_date !== null && (typeof data.start_date !== 'number' || data.start_date <= 0)) {
+      return 'Start date must be a positive number (timestamp) or null';
+    }
   }
   
   // Validate end_date if provided
@@ -591,8 +600,8 @@ function validateCampaignUpdateData(data: any): string | null {
       return 'End date must be a positive number (timestamp) or null';
     }
     
-    // If both start_date and end_date are provided, ensure end_date is after start_date
-    if (data.end_date && 'start_date' in data && data.end_date <= data.start_date) {
+    // If both start_date and end_date are provided and neither is null, ensure end_date is after start_date
+    if (data.end_date && 'start_date' in data && data.start_date && data.end_date <= data.start_date) {
       return 'End date must be after start date';
     }
   }
@@ -672,6 +681,9 @@ async function handleAdServing(request: Request, env: Env, ctx: ExecutionContext
     
   const zoneId = path.split('/').pop() || '';
   
+  // Extract sub_id from query parameters if present
+  const subId = url.searchParams.get('sub_id') || undefined;
+  
   if (!zoneId) {
     return new Response('Zone ID required', { status: 400 });
   }
@@ -685,6 +697,20 @@ async function handleAdServing(request: Request, env: Env, ctx: ExecutionContext
       const zone = await fetchZone(env.DB, zoneId);
       
       if (zone && zone.traffic_back_url) {
+        // Record fallback click before redirecting
+        await recordClick(env.DB, {
+          campaign_id: null, // Use null to indicate fallback since 0 causes foreign key constraint errors
+          zone_id: zoneId,
+          ip: request.headers.get('CF-Connecting-IP') || undefined,
+          user_agent: request.headers.get('User-Agent') || undefined,
+          referer: request.headers.get('Referer') || undefined,
+          country: request.headers.get('CF-IPCountry') || undefined,
+          device_type: detectDeviceType(request.headers.get('User-Agent') || ''),
+          timestamp: Date.now(),
+          event_type: 'fallback',
+          sub_id: subId
+        });
+        
         // Redirect to traffic back URL
         return Response.redirect(zone.traffic_back_url, 302);
       }
@@ -700,7 +726,7 @@ async function handleAdServing(request: Request, env: Env, ctx: ExecutionContext
     }
     
     // Generate a tracking URL
-    const trackingUrl = generateTrackingUrl(request, selectedCampaign.id, zoneId);
+    const trackingUrl = generateTrackingUrl(request, selectedCampaign.id, zoneId, subId);
     
     // Return a redirect to the tracking URL
     return Response.redirect(trackingUrl, 302);
@@ -726,6 +752,9 @@ async function handleTracking(request: Request, env: Env, ctx: ExecutionContext)
   const campaignId = parts[3] || '';
   const zoneId = parts[4] || '';
   
+  // Extract sub_id from query parameters if present
+  const subId = url.searchParams.get('sub_id') || undefined;
+  
   if (!trackType || !campaignId) {
     return new Response('Invalid tracking URL', { status: 400 });
   }
@@ -741,7 +770,8 @@ async function handleTracking(request: Request, env: Env, ctx: ExecutionContext)
         referer: request.headers.get('Referer') || undefined,
         country: request.headers.get('CF-IPCountry') || undefined,
         device_type: detectDeviceType(request.headers.get('User-Agent') || ''),
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        sub_id: subId
       });
       
       // Fetch campaign redirect URL
@@ -764,28 +794,29 @@ async function handleTracking(request: Request, env: Env, ctx: ExecutionContext)
 
 /**
  * Fetch eligible campaigns based on zone targeting
+ * Simplified for development - fetches active campaigns that match the provided zone ID
  */
 async function fetchEligibleCampaigns(db: D1Database, zoneId: string, request: Request): Promise<CampaignDetail[]> {
   try {
-    // Convert zoneId to number since we're using numeric IDs
+    // Validate zone ID
     const zoneIdNum = parseAndValidateId(zoneId, 'zone');
     if (zoneIdNum === null) {
+      console.error(`Invalid zone ID: ${zoneId}`);
       return [];
     }
 
-    // Query for active campaigns that target this zone
+    // For development, we'll still use the zone ID but without complex targeting rules
     const result = await db.prepare(`
-      SELECT c.id, c.name, c.redirect_url, c.status, tr.id as rule_id, 
-             tr.targeting_rule_type_id, tr.targeting_method, tr.rule
+      SELECT c.id, c.name, c.redirect_url, c.status
       FROM campaigns c
-      JOIN targeting_rules tr ON tr.campaign_id = c.id
-      JOIN targeting_rule_types trt ON tr.targeting_rule_type_id = trt.id
+      JOIN targeting_rules tr ON c.id = tr.campaign_id
       WHERE c.status = 'active'
-      AND c.start_date <= unixepoch() 
+      AND (c.start_date IS NULL OR c.start_date <= unixepoch()) 
       AND (c.end_date IS NULL OR c.end_date >= unixepoch())
-      AND trt.name = 'Zone ID'
+      AND tr.targeting_rule_type_id = 4 -- Zone ID type
       AND tr.targeting_method = 'whitelist'
       AND (tr.rule = ? OR tr.rule LIKE ? OR tr.rule LIKE ? OR tr.rule LIKE ?)
+      LIMIT 5
     `).bind(
       zoneIdNum.toString(),
       `${zoneIdNum},%`,
@@ -794,52 +825,27 @@ async function fetchEligibleCampaigns(db: D1Database, zoneId: string, request: R
     ).all();
 
     if (!result.results || result.results.length === 0) {
+      console.log(`No campaigns found for zone ID: ${zoneId}`);
       return [];
     }
 
-    // Group targeting rules by campaign
-    const campaignMap = new Map<number, CampaignDetail>();
-    
-    for (const row of result.results) {
-      // Type assertion to access properties
-      const rowData = row as {
+    // Convert results to CampaignDetail objects with empty targeting rules arrays
+    return result.results.map(row => {
+      const campaign = row as {
         id: number;
         name: string;
         redirect_url: string;
         status: string;
-        rule_id: number;
-        targeting_rule_type_id: number;
-        targeting_method: string;
-        rule: string;
       };
       
-      const campaignId = rowData.id;
-      
-      if (!campaignMap.has(campaignId)) {
-        campaignMap.set(campaignId, {
-          id: campaignId,
-          name: rowData.name,
-          redirect_url: rowData.redirect_url,
-          status: rowData.status,
-          targeting_rules: []
-        });
-      }
-      
-      const campaign = campaignMap.get(campaignId);
-      if (campaign) {
-        campaign.targeting_rules.push({
-          id: rowData.rule_id,
-          campaign_id: campaignId,
-          targeting_rule_type_id: rowData.targeting_rule_type_id,
-          targeting_method: rowData.targeting_method as TargetingMethod,
-          rule: rowData.rule,
-          created_at: 0, // We don't need these for selection
-          updated_at: 0  // We don't need these for selection
-        });
-      }
-    }
-    
-    return Array.from(campaignMap.values());
+      return {
+        id: campaign.id,
+        name: campaign.name,
+        redirect_url: campaign.redirect_url,
+        status: campaign.status,
+        targeting_rules: [] // Empty array as we're skipping targeting rules for development
+      };
+    });
   } catch (error) {
     console.error('Error fetching eligible campaigns:', error);
     return [];
@@ -848,57 +854,119 @@ async function fetchEligibleCampaigns(db: D1Database, zoneId: string, request: R
 
 /**
  * Select a campaign based on targeting rules and weights
+ * Simplified for development - just returns the first campaign
  */
 function selectCampaign(campaigns: CampaignDetail[], request: Request): CampaignDetail | null {
-  if (campaigns.length === 0) {
-    return null;
-  }
-  
-  // Apply targeting rules filtering logic here
-  // For example, filter by geo, device_type, etc.
-  
-  // For now, just select the first campaign as demo
-  return campaigns[0] || null;
+  // In development mode, just return the first campaign if any exist
+  return campaigns.length > 0 ? campaigns[0] : null;
 }
 
 /**
  * Generate a tracking URL for click redirection
  */
-function generateTrackingUrl(request: Request, campaignId: number, zoneId: string): string {
+function generateTrackingUrl(request: Request, campaignId: number, zoneId: string, subId?: string): string {
   const baseUrl = new URL(request.url);
   // Ensure no trailing slash in the pathname
   baseUrl.pathname = `/track/click/${campaignId}/${zoneId}`;
-  baseUrl.search = '';
+  
+  // Add sub_id as query parameter if provided
+  if (subId) {
+    baseUrl.searchParams.set('sub_id', subId);
+  } else {
+    baseUrl.search = '';
+  }
+  
   return baseUrl.toString();
 }
 
 /**
- * Record a click in the database
+ * Record a click in the database as an ad event
  */
 async function recordClick(db: D1Database, clickData: {
-  campaign_id: string | number,
+  campaign_id: string | number | null,
   zone_id: string | number,
   ip?: string,
   user_agent?: string,
   referer?: string,
   country?: string,
   device_type?: string,
-  timestamp: number
+  timestamp: number,
+  event_type?: string,
+  sub_id?: string
 }): Promise<void> {
   try {
+    // Generate Snowflake ID for this event
+    const snowflakeId = generateSnowflakeId();
+    
     // Convert IDs to numbers for numeric IDs
-    const campaignIdNum = parseId(clickData.campaign_id);
+    const campaignIdNum = clickData.campaign_id !== null ? parseId(clickData.campaign_id) : null;
     const zoneIdNum = parseId(clickData.zone_id);
     
-    if (!isValidId(campaignIdNum) || !isValidId(zoneIdNum)) {
-      console.error('Invalid ID format in click data:', clickData);
+    // Only validate campaign ID if it's not null
+    if (campaignIdNum !== null && !isValidId(campaignIdNum)) {
+      console.error('Invalid campaign ID format in click data:', clickData);
       return;
     }
     
+    if (!isValidId(zoneIdNum)) {
+      console.error('Invalid zone ID format in click data:', clickData);
+      return;
+    }
+    
+    // Extract browser and OS from user agent if available
+    let browser = null;
+    let os = null;
+    
+    if (clickData.user_agent) {
+      // Simple browser detection
+      if (clickData.user_agent.includes('Chrome')) {
+        browser = 'Chrome';
+      } else if (clickData.user_agent.includes('Firefox')) {
+        browser = 'Firefox';
+      } else if (clickData.user_agent.includes('Safari')) {
+        browser = 'Safari';
+      } else if (clickData.user_agent.includes('Edge')) {
+        browser = 'Edge';
+      } else if (clickData.user_agent.includes('MSIE') || clickData.user_agent.includes('Trident/')) {
+        browser = 'Internet Explorer';
+      }
+      
+      // Simple OS detection
+      if (clickData.user_agent.includes('Windows')) {
+        os = 'Windows';
+      } else if (clickData.user_agent.includes('Mac OS')) {
+        os = 'macOS';
+      } else if (clickData.user_agent.includes('Linux')) {
+        os = 'Linux';
+      } else if (clickData.user_agent.includes('Android')) {
+        os = 'Android';
+      } else if (clickData.user_agent.includes('iOS') || clickData.user_agent.includes('iPhone') || clickData.user_agent.includes('iPad')) {
+        os = 'iOS';
+      }
+    }
+    
     await db.prepare(`
-      INSERT INTO clicks (campaign_id, zone_id, ip, user_agent, referer, country, device_type, timestamp)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO ad_events (
+        id,
+        sub_id,
+        event_type, 
+        event_time, 
+        campaign_id, 
+        zone_id, 
+        ip, 
+        user_agent, 
+        referer, 
+        country, 
+        device_type,
+        browser,
+        os
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
+      snowflakeId.toString(),
+      clickData.sub_id || null,
+      clickData.event_type || 'click',
+      clickData.timestamp,
       campaignIdNum,
       zoneIdNum,
       clickData.ip || null,
@@ -906,12 +974,14 @@ async function recordClick(db: D1Database, clickData: {
       clickData.referer || null,
       clickData.country || null,
       clickData.device_type || null,
-      clickData.timestamp
+      browser,
+      os
     ).run();
     
-    console.log('Click recorded for campaign', campaignIdNum, 'zone', zoneIdNum);
+    const campaignIdText = campaignIdNum !== null ? campaignIdNum : 'NULL';
+    console.log(`${clickData.event_type || 'Click'} event recorded with ID ${snowflakeId.toString()} for campaign ${campaignIdText}, zone ${zoneIdNum}`);
   } catch (error) {
-    console.error('Error recording click:', error);
+    console.error('Error recording click event:', error);
   }
 }
 
@@ -1485,6 +1555,163 @@ async function deleteZone(zoneId: string, env: Env): Promise<Response> {
   } catch (error) {
     console.error('Error deleting zone:', error);
     return new Response(JSON.stringify({ error: 'Server error deleting zone' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+/**
+ * List ad events with pagination and filtering
+ */
+async function listAdEvents(request: Request, env: Env): Promise<Response> {
+  try {
+    const url = new URL(request.url);
+    const params = url.searchParams;
+    
+    // Parse query parameters
+    const eventType = params.get('event_type');
+    const campaignId = params.get('campaign_id');
+    const zoneId = params.get('zone_id');
+    const country = params.get('country');
+    const deviceType = params.get('device_type');
+    const startTime = params.get('start_time') ? parseInt(params.get('start_time') || '0', 10) : null;
+    const endTime = params.get('end_time') ? parseInt(params.get('end_time') || '0', 10) : null;
+    const limit = parseInt(params.get('limit') || '20', 10);
+    const offset = parseInt(params.get('offset') || '0', 10);
+    const sort = params.get('sort') || 'event_time';
+    const order = params.get('order') || 'desc';
+    
+    // Validate parameters
+    if (limit < 1 || limit > 100) {
+      return new Response(JSON.stringify({ error: 'Limit must be between 1 and 100' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    if (offset < 0) {
+      return new Response(JSON.stringify({ error: 'Offset must be a non-negative integer' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Valid sort fields
+    const validSortFields = ['id', 'event_time', 'event_type', 'campaign_id', 'zone_id', 'country', 'device_type'];
+    if (!validSortFields.includes(sort)) {
+      return new Response(JSON.stringify({ error: 'Invalid sort field' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Valid order values
+    if (order !== 'asc' && order !== 'desc') {
+      return new Response(JSON.stringify({ error: 'Order must be "asc" or "desc"' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Build SQL query
+    let sql = 'SELECT * FROM ad_events';
+    const queryParams: any[] = [];
+    const whereClauses: string[] = [];
+    
+    // Add filters if provided
+    if (eventType) {
+      whereClauses.push('event_type = ?');
+      queryParams.push(eventType);
+    }
+    
+    if (campaignId) {
+      whereClauses.push('campaign_id = ?');
+      queryParams.push(campaignId);
+    }
+    
+    if (zoneId) {
+      whereClauses.push('zone_id = ?');
+      queryParams.push(zoneId);
+    }
+    
+    if (country) {
+      whereClauses.push('country = ?');
+      queryParams.push(country);
+    }
+    
+    if (deviceType) {
+      whereClauses.push('device_type = ?');
+      queryParams.push(deviceType);
+    }
+    
+    if (startTime) {
+      whereClauses.push('event_time >= ?');
+      queryParams.push(startTime);
+    }
+    
+    if (endTime) {
+      whereClauses.push('event_time <= ?');
+      queryParams.push(endTime);
+    }
+    
+    // Combine WHERE clauses if any
+    if (whereClauses.length > 0) {
+      sql += ' WHERE ' + whereClauses.join(' AND ');
+    }
+    
+    // Add sorting
+    sql += ` ORDER BY ${sort} ${order}`;
+    
+    // Add pagination
+    sql += ' LIMIT ? OFFSET ?';
+    queryParams.push(limit, offset);
+    
+    // Count total for pagination
+    let countSql = 'SELECT COUNT(*) as total FROM ad_events';
+    const countParams: any[] = [];
+    
+    // Add filters to count query as well
+    if (whereClauses.length > 0) {
+      countSql += ' WHERE ' + whereClauses.join(' AND ');
+      countParams.push(...queryParams.slice(0, -2)); // Exclude limit and offset
+    }
+    
+    // Execute queries
+    const [eventsResult, countResult] = await Promise.all([
+      env.DB.prepare(sql).bind(...queryParams).all(),
+      env.DB.prepare(countSql).bind(...countParams).all()
+    ]);
+    
+    // Handle database errors
+    if (eventsResult.error) {
+      throw new Error(`Database error: ${eventsResult.error}`);
+    }
+    
+    if (countResult.error) {
+      throw new Error(`Database error: ${countResult.error}`);
+    }
+    
+    // Extract results
+    const events = eventsResult.results || [];
+    const total = countResult.results && countResult.results[0] ? 
+      (countResult.results[0] as { total: number }).total : 0;
+    
+    // Return paginated response
+    return new Response(JSON.stringify({
+      ad_events: events,
+      pagination: {
+        total,
+        limit,
+        offset,
+        has_more: offset + limit < total
+      }
+    }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    console.error('Error listing ad events:', error);
+    return new Response(JSON.stringify({ error: 'Server error listing ad events' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
     });
