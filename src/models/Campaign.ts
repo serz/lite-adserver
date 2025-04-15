@@ -1,3 +1,5 @@
+import { TargetingRule } from './TargetingRule';
+
 /**
  * Campaign model
  */
@@ -16,16 +18,6 @@ export interface Campaign {
 export type CampaignStatus = 'active' | 'paused' | 'archived';
 
 export type TargetingMethod = 'whitelist' | 'blacklist';
-
-export interface TargetingRule {
-  id: number;
-  campaign_id: number;
-  targeting_rule_type_id: number;
-  targeting_method: TargetingMethod;
-  rule: string;
-  created_at: number;
-  updated_at: number;
-}
 
 export interface CampaignWithDetails extends Campaign {
   targeting_rules: TargetingRule[];
