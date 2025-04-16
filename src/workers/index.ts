@@ -1992,15 +1992,9 @@ async function getStats(request: Request, env: Env): Promise<Response> {
       SELECT 
         ${selectClause},
         SUM(CASE WHEN event_type IN ('click', 'unsold', 'fallback') THEN 1 ELSE 0 END) as impressions,
-        SUM(CASE WHEN event_type = 'click' THEN 1 ELSE 0 END) as clicks,
-        SUM(CASE WHEN event_type = 'unsold' THEN 1 ELSE 0 END) as unsold,
         SUM(CASE WHEN event_type = 'fallback' THEN 1 ELSE 0 END) as fallbacks,
-        CASE 
-          WHEN SUM(CASE WHEN event_type IN ('click', 'unsold', 'fallback') THEN 1 ELSE 0 END) > 0 
-          THEN ROUND((SUM(CASE WHEN event_type = 'click' THEN 1 ELSE 0 END) * 100.0) / 
-               SUM(CASE WHEN event_type IN ('click', 'unsold', 'fallback') THEN 1 ELSE 0 END), 2)
-          ELSE 0 
-        END as ctr
+        SUM(CASE WHEN event_type = 'unsold' THEN 1 ELSE 0 END) as unsold,
+        SUM(CASE WHEN event_type = 'click' THEN 1 ELSE 0 END) as clicks
       FROM ad_events
       WHERE ${sqlWhereClauses.join(' AND ')}
       GROUP BY ${groupByClause}

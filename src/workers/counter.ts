@@ -33,7 +33,6 @@ interface StatsResponse {
   date?: string | null;
   impressions: number;
   clicks: number;
-  ctr: number;
 }
 
 export class CounterDO implements DurableObject {
@@ -198,7 +197,6 @@ export class CounterDO implements DurableObject {
     
     let impressions = 0;
     let clicks = 0;
-    let ctr = 0;
     
     if (zoneId && date) {
       const impressionsKey = `daily:${date}:campaign:${campaignId}:zone:${zoneId}:impressions`;
@@ -217,15 +215,12 @@ export class CounterDO implements DurableObject {
       clicks = (await this.state.storage.get(`campaign:${campaignId}:clicks`) as number) || 0;
     }
     
-    ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
-    
     const response: StatsResponse = {
       campaignId: campaignId,
       zoneId: zoneId,
       date: date,
       impressions,
-      clicks,
-      ctr
+      clicks
     };
     
     return new Response(JSON.stringify(response), {

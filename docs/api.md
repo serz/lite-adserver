@@ -678,18 +678,16 @@ curl -H "Authorization: Bearer your-api-key-here" \
     {
       "date": "2022-07-07",
       "impressions": 1415,
-      "clicks": 75,
-      "unsold": 120,
       "fallbacks": 45,
-      "ctr": 5.3
+      "unsold": 120,
+      "clicks": 75
     },
     {
       "date": "2022-07-06",
       "impressions": 1100,
-      "clicks": 45,
-      "unsold": 90,
       "fallbacks": 30,
-      "ctr": 4.09
+      "unsold": 90,
+      "clicks": 45
     }
   ],
   "period": {
@@ -704,12 +702,9 @@ curl -H "Authorization: Bearer your-api-key-here" \
 | Field            | Description                                                            |
 |------------------|------------------------------------------------------------------------|
 | impressions      | Total ad requests (sum of clicks, unsold, and fallbacks)               |
-| clicks           | Number of ad clicks recorded                                           |
-| unsold           | Number of requests with no matching campaigns and no fallback URL      |
 | fallbacks        | Number of requests redirected to a fallback URL (no matching campaigns)|
-| ctr              | Click-through rate percentage (clicks / impressions × 100)             |
-
-**Note:** The CTR is calculated using `impressions` (total of clicks, unsold, and fallbacks) as the denominator, which represents the total number of ad requests.
+| unsold           | Number of requests with no matching campaigns and no fallback URL      |
+| clicks           | Number of ad clicks recorded                                           |
 
 **Example: Group by campaign_id**
 
@@ -726,18 +721,16 @@ curl -H "Authorization: Bearer your-api-key-here" \
     {
       "campaign_id": 1,
       "impressions": 850,
-      "clicks": 42,
-      "unsold": 8,
       "fallbacks": 0,
-      "ctr": 4.94
+      "unsold": 8,
+      "clicks": 42
     },
     {
       "campaign_id": 2,
       "impressions": 750,
-      "clicks": 35,
-      "unsold": 25,
       "fallbacks": 10,
-      "ctr": 4.67
+      "unsold": 25,
+      "clicks": 35
     }
   ],
   "period": {
