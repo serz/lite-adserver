@@ -8,7 +8,7 @@
     "dev": "node dev_scripts/js/start-server.js",
     "dev:fixed-port": "npx wrangler dev src/workers/index.ts --port 8787",
     "start": "node dev_scripts/js/start-server.js",
-    "deploy": "npx wrangler publish",
+    "deploy": "npx wrangler deploy",
     "predeploy": "npm run type-check && npm run lint",
     "lint": "eslint src --ext .ts",
     "type-check": "tsc --noEmit",
