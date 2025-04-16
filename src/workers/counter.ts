@@ -48,7 +48,7 @@ export class CounterDO implements DurableObject {
     const action = url.pathname.split('/').pop();
     
     if (request.method === 'POST') {
-      const data = await request.json();
+      const data = await request.json() as unknown;
       
       switch (action) {
         case 'impression':
@@ -83,27 +83,27 @@ export class CounterDO implements DurableObject {
     }
     
     const campaignKey = `campaign:${campaignId}:impressions`;
-    let impressions = await this.state.storage.get(campaignKey) || 0;
+    const impressions = (await this.state.storage.get(campaignKey) as number) || 0;
     await this.state.storage.put(campaignKey, impressions + 1);
     
     if (zoneId) {
       const zoneKey = `zone:${zoneId}:impressions`;
-      let zoneImpressions = await this.state.storage.get(zoneKey) || 0;
+      const zoneImpressions = (await this.state.storage.get(zoneKey) as number) || 0;
       await this.state.storage.put(zoneKey, zoneImpressions + 1);
       
       const campaignZoneKey = `campaign:${campaignId}:zone:${zoneId}:impressions`;
-      let campaignZoneImpressions = await this.state.storage.get(campaignZoneKey) || 0;
+      const campaignZoneImpressions = (await this.state.storage.get(campaignZoneKey) as number) || 0;
       await this.state.storage.put(campaignZoneKey, campaignZoneImpressions + 1);
       
       const today = new Date().toISOString().split('T')[0];
       const dailyKey = `daily:${today}:campaign:${campaignId}:zone:${zoneId}:impressions`;
-      let dailyImpressions = await this.state.storage.get(dailyKey) || 0;
+      const dailyImpressions = (await this.state.storage.get(dailyKey) as number) || 0;
       await this.state.storage.put(dailyKey, dailyImpressions + 1);
     }
     
     if (userId) {
       const userKey = `user:${userId}:campaign:${campaignId}:impressions`;
-      const userImpressions: number[] = await this.state.storage.get(userKey) || [];
+      const userImpressions = (await this.state.storage.get(userKey) as number[]) || [];
       userImpressions.push(timestamp);
       
       const recentImpressions = userImpressions.filter(
@@ -127,27 +127,27 @@ export class CounterDO implements DurableObject {
     }
     
     const campaignKey = `campaign:${campaignId}:clicks`;
-    let clicks = await this.state.storage.get(campaignKey) || 0;
+    const clicks = (await this.state.storage.get(campaignKey) as number) || 0;
     await this.state.storage.put(campaignKey, clicks + 1);
     
     if (zoneId) {
       const zoneKey = `zone:${zoneId}:clicks`;
-      let zoneClicks = await this.state.storage.get(zoneKey) || 0;
+      const zoneClicks = (await this.state.storage.get(zoneKey) as number) || 0;
       await this.state.storage.put(zoneKey, zoneClicks + 1);
       
       const campaignZoneKey = `campaign:${campaignId}:zone:${zoneId}:clicks`;
-      let campaignZoneClicks = await this.state.storage.get(campaignZoneKey) || 0;
+      const campaignZoneClicks = (await this.state.storage.get(campaignZoneKey) as number) || 0;
       await this.state.storage.put(campaignZoneKey, campaignZoneClicks + 1);
       
       const today = new Date().toISOString().split('T')[0];
       const dailyKey = `daily:${today}:campaign:${campaignId}:zone:${zoneId}:clicks`;
-      let dailyClicks = await this.state.storage.get(dailyKey) || 0;
+      const dailyClicks = (await this.state.storage.get(dailyKey) as number) || 0;
       await this.state.storage.put(dailyKey, dailyClicks + 1);
     }
     
     if (userId) {
       const userKey = `user:${userId}:campaign:${campaignId}:clicks`;
-      const userClicks: number[] = await this.state.storage.get(userKey) || [];
+      const userClicks = (await this.state.storage.get(userKey) as number[]) || [];
       userClicks.push(timestamp);
       await this.state.storage.put(userKey, userClicks);
     }
@@ -166,7 +166,7 @@ export class CounterDO implements DurableObject {
     }
     
     const userKey = `user:${userId}:campaign:${campaignId}:impressions`;
-    const userImpressions: number[] = await this.state.storage.get(userKey) || [];
+    const userImpressions = (await this.state.storage.get(userKey) as number[]) || [];
     
     const recentImpressions = userImpressions.filter(
       (ts: number) => ts > Date.now() - 24 * 60 * 60 * 1000
@@ -204,25 +204,25 @@ export class CounterDO implements DurableObject {
       const impressionsKey = `daily:${date}:campaign:${campaignId}:zone:${zoneId}:impressions`;
       const clicksKey = `daily:${date}:campaign:${campaignId}:zone:${zoneId}:clicks`;
       
-      impressions = await this.state.storage.get(impressionsKey) || 0;
-      clicks = await this.state.storage.get(clicksKey) || 0;
+      impressions = (await this.state.storage.get(impressionsKey) as number) || 0;
+      clicks = (await this.state.storage.get(clicksKey) as number) || 0;
     } else if (zoneId) {
       const impressionsKey = `campaign:${campaignId}:zone:${zoneId}:impressions`;
       const clicksKey = `campaign:${campaignId}:zone:${zoneId}:clicks`;
       
-      impressions = await this.state.storage.get(impressionsKey) || 0;
-      clicks = await this.state.storage.get(clicksKey) || 0;
+      impressions = (await this.state.storage.get(impressionsKey) as number) || 0;
+      clicks = (await this.state.storage.get(clicksKey) as number) || 0;
     } else {
-      impressions = await this.state.storage.get(`campaign:${campaignId}:impressions`) || 0;
-      clicks = await this.state.storage.get(`campaign:${campaignId}:clicks`) || 0;
+      impressions = (await this.state.storage.get(`campaign:${campaignId}:impressions`) as number) || 0;
+      clicks = (await this.state.storage.get(`campaign:${campaignId}:clicks`) as number) || 0;
     }
     
     ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
     
     const response: StatsResponse = {
-      campaignId,
-      zoneId,
-      date,
+      campaignId: campaignId,
+      zoneId: zoneId,
+      date: date,
       impressions,
       clicks,
       ctr

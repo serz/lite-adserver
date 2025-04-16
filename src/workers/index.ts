@@ -4,9 +4,7 @@
 
 import { TargetingRule } from '../models/TargetingRule';
 import { CounterDO } from './counter';
-import { TargetingMethod } from '../models/Campaign';
 import { parseAndValidateId, parseId, isValidId } from '../utils/idValidation';
-import { ensureString, ensureArray } from '../utils/typeGuards';
 import { generateSnowflakeId } from '../utils/snowflake';
 import { replaceMacros } from '../utils/macros';
 // Re-export the CounterDO class needed by the Durable Object binding in wrangler.toml
@@ -30,23 +28,69 @@ interface CampaignDetail {
   targeting_rules: TargetingRule[];
 }
 
+interface DbCampaign {
+  id: number;
+  name: string;
+  redirect_url: string;
+  start_date?: number;
+  end_date?: number;
+  status: string;
+  created_at: number;
+  updated_at: number;
+  [key: string]: unknown;
+}
+
+// Define the interface for campaign update data
+interface CampaignUpdateData {
+  name?: string;
+  redirect_url?: string;
+  status?: string;
+  start_date?: number | null;
+  end_date?: number | null;
+  traffic_back_url?: string;
+  [key: string]: unknown;
+}
+
+// Define the interface for zone update data
+interface ZoneUpdateData {
+  name?: string;
+  site_url?: string;
+  traffic_back_url?: string;
+  status?: string;
+  [key: string]: unknown;
+}
+
+// Define interface for campaign data from request body
+interface CreateCampaignRequestData {
+  name: string;
+  redirect_url: string;
+  start_date?: number;
+  end_date?: number;
+  targeting_rules: Array<{
+    targeting_rule_type_id: number;
+    targeting_method: string;
+    rule: string;
+  }>;
+  [key: string]: unknown;
+}
+
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     
     // API routes
     if (url.pathname.startsWith('/api/')) {
-      return handleApiRequest(request, env, ctx);
+      return handleApiRequest(request, env);
     }
     
     // Ad serving route
     if (url.pathname.startsWith('/serve/')) {
-      return handleAdServing(request, env, ctx);
+      return handleAdServing(request, env);
     }
     
     // Tracking route
     if (url.pathname.startsWith('/track/')) {
-      return handleTracking(request, env, ctx);
+      return handleTracking(request, env);
     }
     
     // Default response
@@ -59,14 +103,14 @@ export default {
 /**
  * Handle API requests
  */
-async function handleApiRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+async function handleApiRequest(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname.endsWith('/') ? url.pathname.slice(0, -1) : url.pathname;
   
   // API Authentication
   // Basic check for API key in Authorization header (Bearer token)
   const authHeader = request.headers.get('Authorization');
-  const apiKey = env.API_KEY || 'test-api-key-1234567890';
+  const apiKey = env.API_KEY ?? 'test-api-key-1234567890';
   
   if (!authHeader || !authHeader.startsWith('Bearer ') || authHeader.substring(7) !== apiKey) {
     return new Response(JSON.stringify({ error: 'Unauthorized. API key required' }), { 
@@ -158,10 +202,10 @@ async function listCampaigns(request: Request, env: Env): Promise<Response> {
     
     // Parse query parameters
     const status = params.get('status');
-    const limit = parseInt(params.get('limit') || '20', 10);
-    const offset = parseInt(params.get('offset') || '0', 10);
-    const sort = params.get('sort') || 'created_at';
-    const order = params.get('order') || 'desc';
+    const limit = parseInt(params.get('limit') ?? '20', 10);
+    const offset = parseInt(params.get('offset') ?? '0', 10);
+    const sort = params.get('sort') ?? 'created_at';
+    const order = params.get('order') ?? 'desc';
     
     // Validate parameters
     if (limit < 1 || limit > 100) {
@@ -197,7 +241,7 @@ async function listCampaigns(request: Request, env: Env): Promise<Response> {
     
     // Build SQL query
     let sql = 'SELECT * FROM campaigns';
-    const queryParams: any[] = [];
+    const queryParams: (string | number)[] = [];
     
     // Add status filter if provided
     if (status) {
@@ -214,7 +258,7 @@ async function listCampaigns(request: Request, env: Env): Promise<Response> {
     
     // Count total for pagination
     let countSql = 'SELECT COUNT(*) as total FROM campaigns';
-    const countParams: any[] = [];
+    const countParams: (string | number)[] = [];
     
     if (status) {
       countSql += ' WHERE status = ?';
@@ -237,8 +281,8 @@ async function listCampaigns(request: Request, env: Env): Promise<Response> {
     }
     
     // Extract results
-    const campaigns = campaignsResult.results || [];
-    const total = countResult.results && countResult.results[0] ? 
+    const campaigns = campaignsResult.results ?? [];
+    const total = countResult.results?.[0] ? 
       (countResult.results[0] as { total: number }).total : 0;
     
     // Return paginated response
@@ -300,7 +344,7 @@ async function getCampaign(campaignId: string | undefined, env: Env): Promise<Re
       });
     }
     
-    const campaign = campaignResult.results[0] as Record<string, any>;
+    const campaign = campaignResult.results[0] as DbCampaign;
     
     // Query targeting rules for this campaign
     const rulesResult = await env.DB.prepare(`
@@ -314,7 +358,7 @@ async function getCampaign(campaignId: string | undefined, env: Env): Promise<Re
     // Combine campaign with its targeting rules
     const campaignWithRules = {
       ...campaign,
-      targeting_rules: rulesResult.results || []
+      targeting_rules: rulesResult.results ?? []
     };
     
     return new Response(JSON.stringify(campaignWithRules), {
@@ -335,7 +379,7 @@ async function getCampaign(campaignId: string | undefined, env: Env): Promise<Re
 async function createCampaign(request: Request, env: Env): Promise<Response> {
   try {
     // Parse the request body
-    const campaignData = await request.json();
+    const campaignData = await request.json() as CreateCampaignRequestData;
     
     // Validate required fields
     if (!campaignData.name || typeof campaignData.name !== 'string') {
@@ -378,8 +422,8 @@ async function createCampaign(request: Request, env: Env): Promise<Response> {
     `).bind(
       campaignData.name,
       campaignData.redirect_url,
-      campaignData.start_date || null,
-      campaignData.end_date || null,
+      campaignData.start_date ?? null,
+      campaignData.end_date ?? null,
       status,
       timestamp,
       timestamp
@@ -393,14 +437,14 @@ async function createCampaign(request: Request, env: Env): Promise<Response> {
     }
     
     // The newly inserted campaign ID
-    const campaignId = result.meta?.last_row_id;
+    const campaignId = result.meta?.['last_row_id'];
     
     if (!campaignId) {
       throw new Error('Failed to get inserted campaign ID');
     }
     
     // Insert targeting rules for the campaign
-    const ruleInsertions = campaignData.targeting_rules.map((rule: any) => {
+    const ruleInsertions = campaignData.targeting_rules.map((rule) => {
       return env.DB.prepare(`
         INSERT INTO targeting_rules (campaign_id, targeting_rule_type_id, targeting_method, rule, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -459,17 +503,10 @@ async function updateCampaign(campaignId: string | undefined, request: Request, 
     }
     
     // Parse request body
-    let updateData: {
-      name?: string;
-      redirect_url?: string;
-      status?: string;
-      traffic_back_url?: string;
-      start_date?: number;
-      end_date?: number | null;
-    };
+    let updateData: CampaignUpdateData;
     
     try {
-      updateData = await request.json();
+      updateData = await request.json() as CampaignUpdateData;
     } catch (error) {
       return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
         status: 400,
@@ -504,7 +541,7 @@ async function updateCampaign(campaignId: string | undefined, request: Request, 
     
     // Build update query with only the fields that are provided
     const updateFields: string[] = [];
-    const params: any[] = [];
+    const params: (string | number)[] = [];
     
     // Process fields for update
     if (updateData.name !== undefined) {
@@ -572,7 +609,7 @@ async function updateCampaign(campaignId: string | undefined, request: Request, 
  * @param data - The data to validate
  * @returns Error message or null if valid
  */
-function validateCampaignUpdateData(data: any): string | null {
+function validateCampaignUpdateData(data: CampaignUpdateData): string | null {
   // Validate status if provided
   if ('status' in data) {
     const validStatuses = ['active', 'paused', 'archived'];
@@ -691,7 +728,7 @@ async function deleteCampaign(campaignId: string | undefined, env: Env): Promise
 /**
  * Handle ad serving requests
  */
-async function handleAdServing(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+async function handleAdServing(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   
   // Handle trailing slashes by removing them
@@ -699,10 +736,10 @@ async function handleAdServing(request: Request, env: Env, ctx: ExecutionContext
     ? url.pathname.slice(0, -1) 
     : url.pathname;
     
-  const zoneId = path.split('/').pop() || '';
+  const zoneId = path.split('/').pop() ?? '';
   
   // Extract sub_id from query parameters if present
-  const subId = url.searchParams.get('sub_id') || undefined;
+  const subId = url.searchParams.get('sub_id') ?? undefined;
   
   if (!zoneId) {
     return new Response('Zone ID required', { status: 400 });
@@ -710,22 +747,22 @@ async function handleAdServing(request: Request, env: Env, ctx: ExecutionContext
   
   try {
     // Fetch eligible campaigns based on zone targeting
-    const campaigns = await fetchEligibleCampaigns(env.DB, zoneId, request);
+    const campaigns = await fetchEligibleCampaigns(env.DB, zoneId);
     
     if (!campaigns || campaigns.length === 0) {
       // If no campaigns are eligible, check if zone has a traffic back URL
       const zone = await fetchZone(env.DB, zoneId);
       
-      if (zone && zone.traffic_back_url) {
+      if (zone?.traffic_back_url) {
         // Record fallback click before redirecting
         await recordClick(env.DB, {
           campaign_id: null, // Use null to indicate fallback since 0 causes foreign key constraint errors
           zone_id: zoneId,
-          ip: request.headers.get('CF-Connecting-IP') || undefined,
-          user_agent: request.headers.get('User-Agent') || undefined,
-          referer: request.headers.get('Referer') || undefined,
-          country: request.headers.get('CF-IPCountry') || undefined,
-          device_type: detectDeviceType(request.headers.get('User-Agent') || ''),
+          ip: request.headers.get('CF-Connecting-IP') ?? undefined,
+          user_agent: request.headers.get('User-Agent') ?? undefined,
+          referer: request.headers.get('Referer') ?? undefined,
+          country: request.headers.get('CF-IPCountry') ?? undefined,
+          device_type: detectDeviceType(request.headers.get('User-Agent') ?? ''),
           timestamp: Date.now(),
           event_type: 'fallback',
           sub_id: subId
@@ -739,11 +776,11 @@ async function handleAdServing(request: Request, env: Env, ctx: ExecutionContext
       await recordClick(env.DB, {
         campaign_id: null,
         zone_id: zoneId,
-        ip: request.headers.get('CF-Connecting-IP') || undefined,
-        user_agent: request.headers.get('User-Agent') || undefined,
-        referer: request.headers.get('Referer') || undefined,
-        country: request.headers.get('CF-IPCountry') || undefined,
-        device_type: detectDeviceType(request.headers.get('User-Agent') || ''),
+        ip: request.headers.get('CF-Connecting-IP') ?? undefined,
+        user_agent: request.headers.get('User-Agent') ?? undefined,
+        referer: request.headers.get('Referer') ?? undefined,
+        country: request.headers.get('CF-IPCountry') ?? undefined,
+        device_type: detectDeviceType(request.headers.get('User-Agent') ?? ''),
         timestamp: Date.now(),
         event_type: 'unsold',
         sub_id: subId
@@ -753,18 +790,18 @@ async function handleAdServing(request: Request, env: Env, ctx: ExecutionContext
     }
     
     // Select a campaign based on targeting rules and weights
-    const selectedCampaign = selectCampaign(campaigns, request);
+    const selectedCampaign = selectCampaign(campaigns);
     
     if (!selectedCampaign) {
       // No suitable campaign found after filtering - record as unsold impression
       await recordClick(env.DB, {
         campaign_id: null,
         zone_id: zoneId,
-        ip: request.headers.get('CF-Connecting-IP') || undefined,
-        user_agent: request.headers.get('User-Agent') || undefined,
-        referer: request.headers.get('Referer') || undefined,
-        country: request.headers.get('CF-IPCountry') || undefined,
-        device_type: detectDeviceType(request.headers.get('User-Agent') || ''),
+        ip: request.headers.get('CF-Connecting-IP') ?? undefined,
+        user_agent: request.headers.get('User-Agent') ?? undefined,
+        referer: request.headers.get('Referer') ?? undefined,
+        country: request.headers.get('CF-IPCountry') ?? undefined,
+        device_type: detectDeviceType(request.headers.get('User-Agent') ?? ''),
         timestamp: Date.now(),
         event_type: 'unsold',
         sub_id: subId
@@ -787,7 +824,7 @@ async function handleAdServing(request: Request, env: Env, ctx: ExecutionContext
 /**
  * Handle tracking requests (clicks)
  */
-async function handleTracking(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+async function handleTracking(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   
   // Handle trailing slashes by removing them
@@ -797,8 +834,8 @@ async function handleTracking(request: Request, env: Env, ctx: ExecutionContext)
     
   const parts = path.split('/');
   const trackType = parts[2]; // /track/{type}/{id}
-  const campaignId = parts[3] || '';
-  const zoneId = parts[4] || '';
+  const campaignId = parts[3] ?? '';
+  const zoneId = parts[4] ?? '';
   
   // Extract sub_id from query parameters if present
   const subId = url.searchParams.get('sub_id');
@@ -816,20 +853,20 @@ async function handleTracking(request: Request, env: Env, ctx: ExecutionContext)
       await recordClick(env.DB, {
         campaign_id: campaignId,
         zone_id: zoneId,
-        ip: request.headers.get('CF-Connecting-IP') || undefined,
-        user_agent: request.headers.get('User-Agent') || undefined,
-        referer: request.headers.get('Referer') || undefined,
-        country: request.headers.get('CF-IPCountry') || undefined,
-        device_type: detectDeviceType(request.headers.get('User-Agent') || ''),
+        ip: request.headers.get('CF-Connecting-IP') ?? undefined,
+        user_agent: request.headers.get('User-Agent') ?? undefined,
+        referer: request.headers.get('Referer') ?? undefined,
+        country: request.headers.get('CF-IPCountry') ?? undefined,
+        device_type: detectDeviceType(request.headers.get('User-Agent') ?? ''),
         timestamp: Date.now(),
-        sub_id: subId || undefined,
+        sub_id: subId ?? undefined,
         click_id: clickId
       });
       
       // Fetch campaign redirect URL
       const campaign = await fetchCampaign(env.DB, campaignId);
       
-      if (!campaign || !campaign.redirect_url) {
+      if (!campaign?.redirect_url) {
         return new Response('Invalid campaign', { status: 404 });
       }
       
@@ -837,7 +874,7 @@ async function handleTracking(request: Request, env: Env, ctx: ExecutionContext)
       const redirectUrl = replaceMacros(campaign.redirect_url, {
         click_id: clickId,
         zone_id: zoneId,
-        aff_sub_id: subId || null
+        aff_sub_id: subId ?? null
       });
       
       // Redirect to campaign URL with macros replaced
@@ -855,7 +892,7 @@ async function handleTracking(request: Request, env: Env, ctx: ExecutionContext)
  * Fetch eligible campaigns based on zone targeting
  * Simplified for development - fetches active campaigns that match the provided zone ID
  */
-async function fetchEligibleCampaigns(db: D1Database, zoneId: string, request: Request): Promise<CampaignDetail[]> {
+async function fetchEligibleCampaigns(db: D1Database, zoneId: string): Promise<CampaignDetail[]> {
   try {
     // Validate zone ID
     const zoneIdNum = parseAndValidateId(zoneId, 'zone');
@@ -915,7 +952,7 @@ async function fetchEligibleCampaigns(db: D1Database, zoneId: string, request: R
  * Select a campaign based on targeting rules and weights
  * Simplified for development - just returns the first campaign
  */
-function selectCampaign(campaigns: CampaignDetail[], request: Request): CampaignDetail | null {
+function selectCampaign(campaigns: CampaignDetail[]): CampaignDetail | null {
   // In development mode, just return the first campaign if any exist
   if (campaigns.length > 0) {
     // Using a definite type assertion
@@ -1028,22 +1065,22 @@ async function recordClick(db: D1Database, clickData: {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       snowflakeId,
-      clickData.sub_id || null,
-      clickData.event_type || 'click',
+      clickData.sub_id ?? null,
+      clickData.event_type ?? 'click',
       clickData.timestamp,
       campaignIdNum,
       zoneIdNum,
-      clickData.ip || null,
-      clickData.user_agent || null,
-      clickData.referer || null,
-      clickData.country || null,
-      clickData.device_type || null,
+      clickData.ip ?? null,
+      clickData.user_agent ?? null,
+      clickData.referer ?? null,
+      clickData.country ?? null,
+      clickData.device_type ?? null,
       browser,
       os
     ).run();
     
-    const campaignIdText = campaignIdNum !== null ? campaignIdNum : 'NULL';
-    console.warn(`${clickData.event_type || 'Click'} event recorded with ID ${snowflakeId} for campaign ${campaignIdText}, zone ${zoneIdNum}`);
+    const campaignIdText = campaignIdNum ?? 'NULL';
+    console.warn(`${clickData.event_type ?? 'Click'} event recorded with ID ${snowflakeId} for campaign ${campaignIdText}, zone ${zoneIdNum}`);
   } catch (error) {
     console.error('Error recording click event:', error);
   }
@@ -1148,7 +1185,7 @@ async function listTargetingRuleTypes(env: Env): Promise<Response> {
     
     // Return the targeting rule types
     return new Response(JSON.stringify({
-      targeting_rule_types: result.results || []
+      targeting_rule_types: result.results ?? []
     }), {
       headers: { 'Content-Type': 'application/json' }
     });
@@ -1213,10 +1250,10 @@ async function listZones(request: Request, env: Env): Promise<Response> {
     
     // Parse query parameters
     const status = params.get('status');
-    const limit = parseInt(params.get('limit') || '20', 10);
-    const offset = parseInt(params.get('offset') || '0', 10);
-    const sort = params.get('sort') || 'created_at';
-    const order = params.get('order') || 'desc';
+    const limit = parseInt(params.get('limit') ?? '20', 10);
+    const offset = parseInt(params.get('offset') ?? '0', 10);
+    const sort = params.get('sort') ?? 'created_at';
+    const order = params.get('order') ?? 'desc';
     
     // Validate parameters
     if (limit < 1 || limit > 100) {
@@ -1252,7 +1289,7 @@ async function listZones(request: Request, env: Env): Promise<Response> {
     
     // Build SQL query
     let sql = 'SELECT * FROM zones';
-    const queryParams: any[] = [];
+    const queryParams: (string | number)[] = [];
     
     // Add status filter if provided
     if (status) {
@@ -1269,7 +1306,7 @@ async function listZones(request: Request, env: Env): Promise<Response> {
     
     // Count total for pagination
     let countSql = 'SELECT COUNT(*) as total FROM zones';
-    const countParams: any[] = [];
+    const countParams: (string | number)[] = [];
     
     if (status) {
       countSql += ' WHERE status = ?';
@@ -1292,8 +1329,8 @@ async function listZones(request: Request, env: Env): Promise<Response> {
     }
     
     // Extract results
-    const zones = zonesResult.results || [];
-    const total = countResult.results && countResult.results[0] ? 
+    const zones = zonesResult.results ?? [];
+    const total = countResult.results?.[0] ? 
       (countResult.results[0] as { total: number }).total : 0;
     
     // Return paginated response
@@ -1347,7 +1384,7 @@ async function getZone(zoneId: string | undefined, env: Env): Promise<Response> 
       throw new Error(`Database error: ${result.error}`);
     }
     
-    const zones = result.results || [];
+    const zones = result.results ?? [];
     
     if (zones.length === 0) {
       return new Response(JSON.stringify({ error: 'Zone not found' }), {
@@ -1376,7 +1413,11 @@ async function getZone(zoneId: string | undefined, env: Env): Promise<Response> 
 async function createZone(request: Request, env: Env): Promise<Response> {
   try {
     // Parse request body
-    const data = await request.json();
+    const data = await request.json() as {
+      name: string;
+      site_url?: string;
+      traffic_back_url?: string;
+    };
     
     // Validate required fields
     if (!data.name) {
@@ -1413,8 +1454,8 @@ async function createZone(request: Request, env: Env): Promise<Response> {
     const now = Date.now();
     const zone = {
       name: data.name,
-      site_url: data.site_url || null,
-      traffic_back_url: data.traffic_back_url || null,
+      site_url: data.site_url ?? null,
+      traffic_back_url: data.traffic_back_url ?? null,
       status: 'active',
       created_at: now,
       updated_at: now
@@ -1441,7 +1482,7 @@ async function createZone(request: Request, env: Env): Promise<Response> {
     
     // Return success response with the ID
     return new Response(JSON.stringify({
-      id: result.meta?.last_row_id,
+      id: result.meta?.['last_row_id'],
       status: zone.status,
       created_at: zone.created_at
     }), {
@@ -1480,7 +1521,7 @@ async function updateZone(zoneId: string | undefined, request: Request, env: Env
     }
     
     // Parse request body
-    const data = await request.json();
+    const data = await request.json() as ZoneUpdateData;
     
     // Validate data
     const validationError = validateZoneUpdateData(data);
@@ -1508,7 +1549,7 @@ async function updateZone(zoneId: string | undefined, request: Request, env: Env
     
     // Prepare update query
     const updates: string[] = [];
-    const params: any[] = [];
+    const params: (string | number | null)[] = [];
     
     // Add fields to update if provided
     if (data.name !== undefined) {
@@ -1540,7 +1581,7 @@ async function updateZone(zoneId: string | undefined, request: Request, env: Env
     
     // Execute update query
     const updateSql = `UPDATE zones SET ${updates.join(', ')} WHERE id = ?`;
-    const updateResult = await env.DB.prepare(updateSql).bind(...params).run();
+    const updateResult = await env.DB.prepare(updateSql).bind(...(params)).run();
     
     if (updateResult.error) {
       throw new Error(`Database error: ${updateResult.error}`);
@@ -1565,7 +1606,7 @@ async function updateZone(zoneId: string | undefined, request: Request, env: Env
 /**
  * Validate zone update data
  */
-function validateZoneUpdateData(data: any): string | null {
+function validateZoneUpdateData(data: ZoneUpdateData): string | null {
   // Check for URL format if provided
   if (data.site_url) {
     try {
@@ -1663,12 +1704,12 @@ async function listAdEvents(request: Request, env: Env): Promise<Response> {
     const zoneId = params.get('zone_id');
     const country = params.get('country');
     const deviceType = params.get('device_type');
-    const startTime = params.get('start_time') ? parseInt(params.get('start_time') || '0', 10) : null;
-    const endTime = params.get('end_time') ? parseInt(params.get('end_time') || '0', 10) : null;
-    const limit = parseInt(params.get('limit') || '20', 10);
-    const offset = parseInt(params.get('offset') || '0', 10);
-    const sort = params.get('sort') || 'event_time';
-    const order = params.get('order') || 'desc';
+    const startTime = params.get('start_time') ? parseInt(params.get('start_time') ?? '0', 10) : null;
+    const endTime = params.get('end_time') ? parseInt(params.get('end_time') ?? '0', 10) : null;
+    const limit = parseInt(params.get('limit') ?? '20', 10);
+    const offset = parseInt(params.get('offset') ?? '0', 10);
+    const sort = params.get('sort') ?? 'event_time';
+    const order = params.get('order') ?? 'desc';
     
     // Validate parameters
     if (limit < 1 || limit > 100) {
@@ -1704,7 +1745,7 @@ async function listAdEvents(request: Request, env: Env): Promise<Response> {
     
     // Build SQL query
     let sql = 'SELECT * FROM ad_events';
-    const queryParams: any[] = [];
+    const queryParams: (string | number)[] = [];
     const whereClauses: string[] = [];
     
     // Add filters if provided
@@ -1757,7 +1798,7 @@ async function listAdEvents(request: Request, env: Env): Promise<Response> {
     
     // Count total for pagination
     let countSql = 'SELECT COUNT(*) as total FROM ad_events';
-    const countParams: any[] = [];
+    const countParams: (string | number)[] = [];
     
     // Add filters to count query as well
     if (whereClauses.length > 0) {
@@ -1767,8 +1808,8 @@ async function listAdEvents(request: Request, env: Env): Promise<Response> {
     
     // Execute queries
     const [eventsResult, countResult] = await Promise.all([
-      env.DB.prepare(sql).bind(...queryParams).all(),
-      env.DB.prepare(countSql).bind(...countParams).all()
+      env.DB.prepare(sql).bind(...(queryParams)).all(),
+      env.DB.prepare(countSql).bind(...(countParams)).all()
     ]);
     
     // Handle database errors
@@ -1781,8 +1822,8 @@ async function listAdEvents(request: Request, env: Env): Promise<Response> {
     }
     
     // Extract results
-    const events = eventsResult.results || [];
-    const total = countResult.results && countResult.results[0] ? 
+    const events = eventsResult.results ?? [];
+    const total = countResult.results?.[0] ? 
       (countResult.results[0] as { total: number }).total : 0;
     
     // Return paginated response
@@ -1826,7 +1867,7 @@ async function getStats(request: Request, env: Env): Promise<Response> {
     
     const campaignIdsParam = params.get('campaign_ids');
     const zoneIdsParam = params.get('zone_ids');
-    const groupByParam = params.get('group_by') || 'date';
+    const groupByParam = params.get('group_by') ?? 'date';
     
     // Validate group_by parameter
     const validGroupByValues = ['date', 'campaign_id', 'zone_id', 'country'];
@@ -1840,8 +1881,8 @@ async function getStats(request: Request, env: Env): Promise<Response> {
     }
     
     // Build SQL query
-    let sqlWhereClauses: string[] = [];
-    const queryParams: any[] = [];
+    const sqlWhereClauses: string[] = [];
+    const queryParams: (string | number)[] = [];
 
     // Add time range filters
     sqlWhereClauses.push('event_time >= ?');
@@ -1909,7 +1950,7 @@ async function getStats(request: Request, env: Env): Promise<Response> {
     `;
 
     // Execute query
-    const result = await env.DB.prepare(sql).bind(...queryParams).all();
+    const result = await env.DB.prepare(sql).bind(...(queryParams)).all();
     
     if (result.error) {
       throw new Error(`Database error: ${result.error}`);
@@ -1917,7 +1958,7 @@ async function getStats(request: Request, env: Env): Promise<Response> {
 
     // Return response
     return new Response(JSON.stringify({
-      stats: result.results || [],
+      stats: result.results ?? [],
       period: {
         from,
         to

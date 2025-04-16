@@ -10,7 +10,7 @@ interface D1Database {
 }
 
 interface D1PreparedStatement {
-  bind(...values: any[]): D1PreparedStatement;
+  bind(...values: unknown[]): D1PreparedStatement;
   first<T = unknown>(column?: string): Promise<T>;
   run<T = unknown>(): Promise<D1Result<T>>;
   all<T = unknown>(): Promise<D1Result<T>>;
@@ -21,7 +21,7 @@ interface D1Result<T = unknown> {
   results?: T[];
   success: boolean;
   error?: string;
-  meta: any;
+  meta: Record<string, unknown>;
 }
 
 interface DurableObjectNamespace {
@@ -47,13 +47,13 @@ interface DurableObject {
 interface DurableObjectState {
   id: DurableObjectId;
   storage: DurableObjectStorage;
-  waitUntil(promise: Promise<any>): void;
+  waitUntil(promise: Promise<unknown>): void;
 }
 
 interface DurableObjectStorage {
-  get<T = any>(key: string): Promise<T | undefined>;
-  get<T = any>(keys: string[]): Promise<Map<string, T>>;
-  list<T = any>(options?: { prefix?: string; reverse?: boolean; limit?: number }): Promise<Map<string, T>>;
+  get<T = unknown>(key: string): Promise<T | undefined>;
+  get<T = unknown>(keys: string[]): Promise<Map<string, T>>;
+  list<T = unknown>(options?: { prefix?: string; reverse?: boolean; limit?: number }): Promise<Map<string, T>>;
   put<T>(key: string, value: T): Promise<void>;
   put<T>(entries: Record<string, T>): Promise<void>;
   delete(key: string): Promise<boolean>;
@@ -63,9 +63,9 @@ interface DurableObjectStorage {
 }
 
 interface DurableObjectTransaction {
-  get<T = any>(key: string): Promise<T | undefined>;
-  get<T = any>(keys: string[]): Promise<Map<string, T>>;
-  list<T = any>(options?: { prefix?: string; reverse?: boolean; limit?: number }): Promise<Map<string, T>>;
+  get<T = unknown>(key: string): Promise<T | undefined>;
+  get<T = unknown>(keys: string[]): Promise<Map<string, T>>;
+  list<T = unknown>(options?: { prefix?: string; reverse?: boolean; limit?: number }): Promise<Map<string, T>>;
   put<T>(key: string, value: T): Promise<void>;
   put<T>(entries: Record<string, T>): Promise<void>;
   delete(key: string): Promise<boolean>;
@@ -74,6 +74,6 @@ interface DurableObjectTransaction {
 }
 
 interface ExecutionContext {
-  waitUntil(promise: Promise<any>): void;
+  waitUntil(promise: Promise<unknown>): void;
   passThroughOnException(): void;
 } 
