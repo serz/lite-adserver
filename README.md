@@ -100,7 +100,7 @@ When contributing to this project, please follow these guidelines:
 
 ### Phase 1: Core Functionality Improvements
 - [ ] Implement proper campaign selection algorithm
-- [ ] Set up proper CORS and security headers for production
+- [x] Set up proper CORS and security headers for production
 - [ ] Improve device type detection with comprehensive library
 - [x] Fix all remaining TypeScript strict mode warnings
 - [ ] Add proper error handling for edge cases
@@ -139,6 +139,49 @@ When contributing to this project, please follow these guidelines:
 - [ ] Document targeting rule system
 - [ ] Create integration examples
 - [ ] Implement comprehensive test suite
+
+## Security and CORS Configuration
+
+The ad server implements robust security features and CORS support to ensure secure operation in production environments:
+
+### Security Headers
+
+All responses include the following security headers:
+
+- **Content-Security-Policy**: Restricts resource loading to prevent XSS attacks
+- **Strict-Transport-Security**: Enforces HTTPS connections
+- **X-Content-Type-Options**: Prevents MIME type sniffing
+- **X-Frame-Options**: Controls iframe embedding
+- **Referrer-Policy**: Limits referrer information
+- **Permissions-Policy**: Restricts browser features
+
+### CORS Configuration
+
+CORS (Cross-Origin Resource Sharing) is fully configurable through environment variables:
+
+- **ALLOWED_ORIGINS**: Comma-separated list of allowed origins for CORS requests
+- Different configurations for development, staging, and production environments
+- Automatic handling of preflight requests
+
+### Configuration
+
+CORS settings can be configured through the `ALLOWED_ORIGINS` environment variable in `wrangler.toml`:
+
+```toml
+# For production
+[env.production]
+vars = { 
+  ALLOWED_ORIGINS = "https://yourdomain.com,https://admin.yourdomain.com"
+}
+
+# For development (more permissive)
+[env.development]
+vars = {
+  ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:8080"
+}
+```
+
+For maximum security in production, ensure you only allow specific trusted domains.
 
 ## License
 

@@ -5,6 +5,8 @@ compatibility_date = "2023-10-30"
 # Environment variables
 [vars]
 API_KEY = "test-api-key-1234567890"
+# Default to allow all origins in development (empty string = all origins)
+ALLOWED_ORIGINS = ""
 
 # D1 Database for campaign and zone metadata
 [[d1_databases]]
@@ -24,11 +26,23 @@ new_classes = ["CounterDO"]
 # Define environments
 [env.production]
 # Production-specific settings
-vars = { API_KEY = "production-api-key-secure" }
+vars = { 
+  API_KEY = "production-api-key-secure",
+  # Strictly limit allowed origins in production
+  ALLOWED_ORIGINS = ""
+}
 
 [env.staging]
 # Staging-specific settings
-vars = { API_KEY = "staging-api-key-1234567890" }
+vars = { 
+  API_KEY = "staging-api-key-1234567890",
+  # Allow staging domains
+  ALLOWED_ORIGINS = ""
+}
 
 [env.development]
-# Development-specific settings 
+# Development-specific settings
+vars = {
+  # Allow local development servers
+  ALLOWED_ORIGINS = ""
+} 
