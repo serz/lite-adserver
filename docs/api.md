@@ -156,7 +156,6 @@ curl -H "Authorization: Bearer your-api-key-here" \
       "targeting_rule_type_id": 4,
       "targeting_method": "whitelist",
       "rule": "1,2,3",
-      "weight": 100,
       "created_at": 1657152000000,
       "updated_at": 1657152000000
     },
@@ -166,7 +165,6 @@ curl -H "Authorization: Bearer your-api-key-here" \
       "targeting_rule_type_id": 1,
       "targeting_method": "whitelist",
       "rule": "US,CA",
-      "weight": 100,
       "created_at": 1657152000000,
       "updated_at": 1657152000000
     }
@@ -194,14 +192,12 @@ Creates a new campaign.
     {
       "targeting_rule_type_id": 4,
       "targeting_method": "whitelist",
-      "rule": "1,2",
-      "weight": 100
+      "rule": "1,2"
     },
     {
       "targeting_rule_type_id": 2,
       "targeting_method": "whitelist",
-      "rule": "mobile",
-      "weight": 100
+      "rule": "mobile"
     }
   ]
 }
@@ -222,8 +218,7 @@ curl -X POST \
       {
         "targeting_rule_type_id": 4,
         "targeting_method": "whitelist",
-        "rule": "1,2",
-        "weight": 100
+        "rule": "1,2"
       }
     ]
   }' \
