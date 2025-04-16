@@ -26,23 +26,19 @@ new_classes = ["CounterDO"]
 # Define environments
 [env.production]
 # Production-specific settings
-vars = { 
-  API_KEY = "production-api-key-secure",
-  # Strictly limit allowed origins in production
-  ALLOWED_ORIGINS = ""
-}
 
-[env.staging]
-# Staging-specific settings
-vars = { 
-  API_KEY = "staging-api-key-1234567890",
-  # Allow staging domains
-  ALLOWED_ORIGINS = ""
-}
+[env.production.vars]
+# API key for production
+API_KEY = "production-api-key-secure"
+# Allowed origins (comma-separated)
+ALLOWED_ORIGINS = ""
 
-[env.development]
-# Development-specific settings
-vars = {
-  # Allow local development servers
-  ALLOWED_ORIGINS = ""
-} 
+[env.staging.vars]
+# API key for staging
+API_KEY = "staging-api-key-secure"
+ALLOWED_ORIGINS = ""
+
+[env.development.vars]
+# API key for development
+API_KEY = "development-api-key-secure"
+ALLOWED_ORIGINS = ""
