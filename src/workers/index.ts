@@ -8,7 +8,7 @@ import { TargetingMethod } from '../models/Campaign';
 import { parseAndValidateId, parseId, isValidId } from '../utils/idValidation';
 import { ensureString, ensureArray } from '../utils/typeGuards';
 import { generateSnowflakeId } from '../utils/snowflake';
-
+import { replaceMacros } from '../utils/macros';
 // Re-export the CounterDO class needed by the Durable Object binding in wrangler.toml
 export { CounterDO };
 
@@ -265,8 +265,16 @@ async function listCampaigns(request: Request, env: Env): Promise<Response> {
 /**
  * Get campaign by ID
  */
-async function getCampaign(campaignId: string, env: Env): Promise<Response> {
+async function getCampaign(campaignId: string | undefined, env: Env): Promise<Response> {
   try {
+    // Check if campaignId is undefined
+    if (campaignId === undefined) {
+      return new Response(JSON.stringify({ error: 'Campaign ID is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     // Validate ID
     const id = parseAndValidateId(campaignId, 'campaign');
     if (id === null) {
@@ -431,8 +439,16 @@ async function createCampaign(request: Request, env: Env): Promise<Response> {
 /**
  * Update an existing campaign
  */
-async function updateCampaign(campaignId: string, request: Request, env: Env): Promise<Response> {
+async function updateCampaign(campaignId: string | undefined, request: Request, env: Env): Promise<Response> {
   try {
+    // Check if campaignId is undefined
+    if (campaignId === undefined) {
+      return new Response(JSON.stringify({ error: 'Campaign ID is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     // Validate ID
     const id = parseAndValidateId(campaignId, 'campaign');
     if (id === null) {
@@ -608,8 +624,16 @@ function validateCampaignUpdateData(data: any): string | null {
 /**
  * Delete a campaign
  */
-async function deleteCampaign(campaignId: string, env: Env): Promise<Response> {
+async function deleteCampaign(campaignId: string | undefined, env: Env): Promise<Response> {
   try {
+    // Check if campaignId is undefined
+    if (campaignId === undefined) {
+      return new Response(JSON.stringify({ error: 'Campaign ID is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     // Validate ID
     const id = parseAndValidateId(campaignId, 'campaign');
     if (id === null) {
@@ -662,32 +686,6 @@ async function deleteCampaign(campaignId: string, env: Env): Promise<Response> {
       headers: { 'Content-Type': 'application/json' }
     });
   }
-}
-
-/**
- * Replace macros in a URL with their actual values
- */
-function replaceMacros(url: string, macroValues: {
-  click_id?: string | null,
-  zone_id?: string | null,
-  aff_sub_id?: string | null
-}): string {
-  let result = url;
-  
-  // Only replace if the value exists and isn't null
-  if (macroValues.click_id) {
-    result = result.replace(/{click_id}/g, macroValues.click_id);
-  }
-  
-  if (macroValues.zone_id) {
-    result = result.replace(/{zone_id}/g, macroValues.zone_id);
-  }
-  
-  if (macroValues.aff_sub_id) {
-    result = result.replace(/{aff_sub_id}/g, macroValues.aff_sub_id);
-  }
-  
-  return result;
 }
 
 /**
@@ -919,7 +917,11 @@ async function fetchEligibleCampaigns(db: D1Database, zoneId: string, request: R
  */
 function selectCampaign(campaigns: CampaignDetail[], request: Request): CampaignDetail | null {
   // In development mode, just return the first campaign if any exist
-  return campaigns.length > 0 ? campaigns[0] : null;
+  if (campaigns.length > 0) {
+    // Using a definite type assertion
+    return campaigns[0] as CampaignDetail;
+  }
+  return null;
 }
 
 /**
@@ -1318,8 +1320,16 @@ async function listZones(request: Request, env: Env): Promise<Response> {
 /**
  * Get zone by ID
  */
-async function getZone(zoneId: string, env: Env): Promise<Response> {
+async function getZone(zoneId: string | undefined, env: Env): Promise<Response> {
   try {
+    // Check if zoneId is undefined
+    if (zoneId === undefined) {
+      return new Response(JSON.stringify({ error: 'Zone ID is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     // Validate ID
     const id = parseAndValidateId(zoneId, 'zone');
     if (id === null) {
@@ -1450,8 +1460,16 @@ async function createZone(request: Request, env: Env): Promise<Response> {
 /**
  * Update an existing zone
  */
-async function updateZone(zoneId: string, request: Request, env: Env): Promise<Response> {
+async function updateZone(zoneId: string | undefined, request: Request, env: Env): Promise<Response> {
   try {
+    // Check if zoneId is undefined
+    if (zoneId === undefined) {
+      return new Response(JSON.stringify({ error: 'Zone ID is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     // Validate ID
     const id = parseAndValidateId(zoneId, 'zone');
     if (id === null) {
@@ -1576,8 +1594,16 @@ function validateZoneUpdateData(data: any): string | null {
 /**
  * Delete a zone
  */
-async function deleteZone(zoneId: string, env: Env): Promise<Response> {
+async function deleteZone(zoneId: string | undefined, env: Env): Promise<Response> {
   try {
+    // Check if zoneId is undefined
+    if (zoneId === undefined) {
+      return new Response(JSON.stringify({ error: 'Zone ID is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
     // Validate ID
     const id = parseAndValidateId(zoneId, 'zone');
     if (id === null) {
