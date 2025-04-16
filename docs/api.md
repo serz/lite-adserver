@@ -677,7 +677,6 @@ curl -H "Authorization: Bearer your-api-key-here" \
   "stats": [
     {
       "date": "2022-07-07",
-      "direct_impressions": 1250,
       "impressions": 1415,
       "clicks": 75,
       "unsold": 120,
@@ -686,7 +685,6 @@ curl -H "Authorization: Bearer your-api-key-here" \
     },
     {
       "date": "2022-07-06",
-      "direct_impressions": 980,
       "impressions": 1100,
       "clicks": 45,
       "unsold": 90,
@@ -705,7 +703,6 @@ curl -H "Authorization: Bearer your-api-key-here" \
 
 | Field            | Description                                                            |
 |------------------|------------------------------------------------------------------------|
-| direct_impressions| Number of explicitly recorded impression events                       |
 | impressions      | Total ad requests (sum of clicks, unsold, and fallbacks)               |
 | clicks           | Number of ad clicks recorded                                           |
 | unsold           | Number of requests with no matching campaigns and no fallback URL      |
@@ -728,7 +725,6 @@ curl -H "Authorization: Bearer your-api-key-here" \
   "stats": [
     {
       "campaign_id": 1,
-      "direct_impressions": 750,
       "impressions": 850,
       "clicks": 42,
       "unsold": 8,
@@ -737,7 +733,6 @@ curl -H "Authorization: Bearer your-api-key-here" \
     },
     {
       "campaign_id": 2,
-      "direct_impressions": 680,
       "impressions": 750,
       "clicks": 35,
       "unsold": 25,
