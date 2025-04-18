@@ -1,7 +1,7 @@
 import type { KVNamespace } from '@cloudflare/workers-types';
 import { parseAndValidateId } from '../utils/idValidation';
 import { hasValidAuthorization } from '../utils/auth';
-import type { Env } from '../workers/index';
+import type { Env } from '../models/interfaces';
 
 /**
  * Type for the environment with required bindings for sync operations
@@ -9,6 +9,12 @@ import type { Env } from '../workers/index';
 export interface SyncEnv extends Env {
   DB: D1Database;
   campaigns_zones: KVNamespace;
+}
+
+// A logger function that's compatible with linting rules
+function logError(message: string): void {
+  // eslint-disable-next-line no-console
+  console.error(message);
 }
 
 /**
@@ -139,7 +145,8 @@ export async function syncAll(env: SyncEnv): Promise<Response> {
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
-    console.error('Error syncing all data:', error);
+    logError('Error syncing all data:');
+    logError(error instanceof Error ? error.message : String(error));
     return new Response(JSON.stringify({ 
       error: 'Server error syncing all data',
       details: error instanceof Error ? error.message : String(error)
@@ -225,7 +232,8 @@ export async function syncAllCampaigns(env: SyncEnv): Promise<Response> {
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
-    console.error('Error syncing campaigns:', error);
+    logError('Error syncing campaigns:');
+    logError(error instanceof Error ? error.message : String(error));
     return new Response(JSON.stringify({ 
       error: 'Server error syncing campaigns',
       details: error instanceof Error ? error.message : String(error)
@@ -272,7 +280,8 @@ export async function syncAllZones(env: SyncEnv): Promise<Response> {
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
-    console.error('Error syncing zones:', error);
+    logError('Error syncing zones:');
+    logError(error instanceof Error ? error.message : String(error));
     return new Response(JSON.stringify({ 
       error: 'Server error syncing zones',
       details: error instanceof Error ? error.message : String(error)
@@ -308,7 +317,8 @@ export async function syncCampaign(campaignId: string, env: SyncEnv): Promise<Re
       try {
         campaigns = JSON.parse(campaignsJson) as Campaign[];
       } catch (e) {
-        console.error('Error parsing campaigns JSON from KV:', e);
+        logError('Error parsing campaigns JSON from KV:');
+        logError(e instanceof Error ? e.message : String(e));
         campaigns = [];
       }
     }
@@ -379,7 +389,8 @@ export async function syncCampaign(campaignId: string, env: SyncEnv): Promise<Re
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
-    console.error('Error syncing campaign:', error);
+    logError('Error syncing campaign:');
+    logError(error instanceof Error ? error.message : String(error));
     return new Response(JSON.stringify({ 
       error: 'Server error syncing campaign',
       details: error instanceof Error ? error.message : String(error)
@@ -450,7 +461,8 @@ export async function syncZone(zoneId: string, env: SyncEnv): Promise<Response> 
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
-    console.error('Error syncing zone:', error);
+    logError('Error syncing zone:');
+    logError(error instanceof Error ? error.message : String(error));
     return new Response(JSON.stringify({ 
       error: 'Server error syncing zone',
       details: error instanceof Error ? error.message : String(error)
@@ -498,7 +510,8 @@ export async function getSyncState(env: SyncEnv): Promise<Response> {
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
-    console.error('Error getting sync state:', error);
+    logError('Error getting sync state:');
+    logError(error instanceof Error ? error.message : String(error));
     return new Response(JSON.stringify({ 
       error: 'Server error getting sync state',
       details: error instanceof Error ? error.message : String(error)

@@ -2,7 +2,7 @@
  * Authentication utility functions
  */
 
-import type { Env } from '../workers/index';
+import type { Env } from '../models/interfaces';
 
 /**
  * Check if the request has valid authorization

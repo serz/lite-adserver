@@ -30,6 +30,5 @@ tag = "v1"
 new_classes = ["CounterDO"]
 
 # Scheduled triggers for automatic syncing
-[[triggers]]
-cron = "*/5 * * * *" # Run hourly (at minute 0)
-type = "scheduled"
+[triggers]
+crons = ["*/5 * * * *"] # Run every 5 minutes

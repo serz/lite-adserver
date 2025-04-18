@@ -2,129 +2,39 @@
  * Lite Ad Server - Cloudflare Worker Entry Point
  */
 
-import type { KVNamespace } from '@cloudflare/workers-types';
 import type { ScheduledEvent } from '@cloudflare/workers-types';
-import { TargetingRule } from '../models/TargetingRule';
 import { CounterDO } from './counter';
 import { parseAndValidateId, parseId, isValidId } from '../utils/idValidation';
 import { generateSnowflakeId } from '../utils/snowflake';
 import { replaceMacros } from '../utils/macros';
 import { handleSyncApiRequests } from '../services/syncService';
 import { hasValidAuthorization } from '../utils/auth';
+import { applySecurityHeaders } from '../utils/securityHeaders';
+import { 
+  Env, 
+  CampaignDetail, 
+  DbCampaign, 
+  CampaignUpdateData, 
+  ZoneUpdateData, 
+  CreateCampaignRequestData 
+} from '../models/interfaces';
 // Re-export the CounterDO class needed by the Durable Object binding in wrangler.toml
 export { CounterDO };
 
-export interface Env {
-  // D1 Database
-  DB: D1Database;
-  // Durable Objects
-  COUNTER: DurableObjectNamespace;
-  // API Key
-  API_KEY?: string;
-  // Allowed origins for CORS
-  ALLOWED_ORIGINS?: string;
-  // KV namespace for campaigns and zones
-  campaigns_zones: KVNamespace;
+// A logger function that's compatible with linting rules
+function logMessage(message: string): void {
+  // eslint-disable-next-line no-console
+  console.log(message);
 }
 
-// Security headers to apply to all responses
-const SECURITY_HEADERS = {
-  'Content-Security-Policy': 
-    "default-src 'self'; script-src 'self'; object-src 'none'; upgrade-insecure-requests;",
-  'Strict-Transport-Security': 'max-age=63072000; includeSubDomains; preload',
-  'X-Content-Type-Options': 'nosniff',
-  'X-Frame-Options': 'DENY',
-  'Referrer-Policy': 'strict-origin-when-cross-origin',
-  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
-};
-
-/**
- * Apply security headers and CORS headers to a response
- */
-function applySecurityHeaders(response: Response, request: Request, env: Env): Response {
-  const headers = new Headers(response.headers);
-  
-  // Add all security headers
-  Object.entries(SECURITY_HEADERS).forEach(([key, value]) => {
-    headers.set(key, value);
-  });
-  
-  // Parse allowed origins from environment variable or use default
-  const allowedOriginsStr = env.ALLOWED_ORIGINS ?? '';
-  const allowedOrigins = allowedOriginsStr.split(',').map(origin => origin.trim());
-  
-  // Handle CORS headers
-  const origin = request.headers.get('Origin');
-  if (origin) {
-    // If the origin is in our allowed list, or if ALLOWED_ORIGINS is empty or undefined
-    if (allowedOrigins.includes(origin) || allowedOriginsStr === '') {
-      headers.set('Access-Control-Allow-Origin', origin);
-      headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-      headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-      headers.set('Access-Control-Max-Age', '86400'); // 24 hours
-    }
-  }
-  
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers
-  });
+function logError(message: string): void {
+  // eslint-disable-next-line no-console
+  console.error(message);
 }
 
-// Campaign with targeting rules for selection
-interface CampaignDetail {
-  id: number;
-  name: string;
-  redirect_url: string;
-  status: string;
-  targeting_rules: TargetingRule[];
-}
-
-interface DbCampaign {
-  id: number;
-  name: string;
-  redirect_url: string;
-  start_date?: number;
-  end_date?: number;
-  status: string;
-  created_at: number;
-  updated_at: number;
-  [key: string]: unknown;
-}
-
-// Define the interface for campaign update data
-interface CampaignUpdateData {
-  name?: string;
-  redirect_url?: string;
-  status?: string;
-  start_date?: number | null;
-  end_date?: number | null;
-  traffic_back_url?: string;
-  [key: string]: unknown;
-}
-
-// Define the interface for zone update data
-interface ZoneUpdateData {
-  name?: string;
-  site_url?: string;
-  traffic_back_url?: string;
-  status?: string;
-  [key: string]: unknown;
-}
-
-// Define interface for campaign data from request body
-interface CreateCampaignRequestData {
-  name: string;
-  redirect_url: string;
-  start_date?: number;
-  end_date?: number;
-  targeting_rules: Array<{
-    targeting_rule_type_id: number;
-    targeting_method: string;
-    rule: string;
-  }>;
-  [key: string]: unknown;
+function logWarning(message: string): void {
+  // eslint-disable-next-line no-console
+  console.warn(message);
 }
 
 export default {
@@ -165,7 +75,7 @@ export default {
   
   // Handler for scheduled events
   async scheduled(event: ScheduledEvent, env: Env): Promise<void> {
-    console.log(`Running scheduled sync at ${new Date().toISOString()}`);
+    logMessage(`Running scheduled sync at ${new Date().toISOString()}`);
     
     try {
       // Create a SyncEnv from Env
@@ -174,9 +84,9 @@ export default {
       // Call syncAll to sync both campaigns and zones
       await import('../services/syncService').then(({ syncAll }) => syncAll(syncEnv));
       
-      console.log(`Scheduled sync completed successfully at ${new Date().toISOString()}`);
+      logMessage(`Scheduled sync completed successfully at ${new Date().toISOString()}`);
     } catch (error) {
-      console.error(`Error in scheduled sync: ${error instanceof Error ? error.message : String(error)}`);
+      logError(`Error in scheduled sync: ${error instanceof Error ? error.message : String(error)}`);
     }
   },
 };
@@ -380,7 +290,8 @@ async function listCampaigns(request: Request, env: Env): Promise<Response> {
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
-    console.error('Error listing campaigns:', error);
+    logError('Error listing campaigns:');
+    logError(error instanceof Error ? error.message : String(error));
     return new Response(JSON.stringify({ error: 'Server error listing campaigns' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
@@ -447,7 +358,8 @@ async function getCampaign(campaignId: string | undefined, env: Env): Promise<Re
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
-    console.error('Error getting campaign:', error);
+    logError('Error getting campaign:');
+    logError(error instanceof Error ? error.message : String(error));
     return new Response(JSON.stringify({ error: 'Server error getting campaign' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
@@ -554,7 +466,8 @@ async function createCampaign(request: Request, env: Env): Promise<Response> {
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
-    console.error('Error creating campaign:', error);
+    logError('Error creating campaign:');
+    logError(error instanceof Error ? error.message : String(error));
     return new Response(JSON.stringify({ error: 'Server error creating campaign' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
@@ -678,7 +591,8 @@ async function updateCampaign(campaignId: string | undefined, request: Request, 
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
-    console.error('Error updating campaign:', error);
+    logError('Error updating campaign:');
+    logError(error instanceof Error ? error.message : String(error));
     return new Response(JSON.stringify({ error: 'Server error updating campaign' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
@@ -799,7 +713,8 @@ async function deleteCampaign(campaignId: string | undefined, env: Env): Promise
     // Return a 204 No Content response
     return new Response(null, { status: 204 });
   } catch (error) {
-    console.error('Error deleting campaign:', error);
+    logError('Error deleting campaign:');
+    logError(error instanceof Error ? error.message : String(error));
     return new Response(JSON.stringify({ error: 'Server error deleting campaign' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
@@ -898,7 +813,8 @@ async function handleAdServing(request: Request, env: Env): Promise<Response> {
     // Return a redirect to the tracking URL
     return Response.redirect(trackingUrl, 302);
   } catch (error) {
-    console.error('Error serving ad:', error);
+    logError('Error serving ad:');
+    logError(error instanceof Error ? error.message : String(error));
     return new Response('Server error', { status: 500 });
   }
 }
@@ -965,7 +881,8 @@ async function handleTracking(request: Request, env: Env): Promise<Response> {
     
     return new Response('Unknown tracking type', { status: 400 });
   } catch (error) {
-    console.error('Error tracking:', error);
+    logError('Error tracking:');
+    logError(error instanceof Error ? error.message : String(error));
     return new Response('Server error', { status: 500 });
   }
 }
@@ -979,7 +896,7 @@ async function fetchEligibleCampaigns(db: D1Database, zoneId: string): Promise<C
     // Validate zone ID
     const zoneIdNum = parseAndValidateId(zoneId, 'zone');
     if (zoneIdNum === null) {
-      console.error(`Invalid zone ID: ${zoneId}`);
+      logError(`Invalid zone ID: ${zoneId}`);
       return [];
     }
 
@@ -1003,7 +920,7 @@ async function fetchEligibleCampaigns(db: D1Database, zoneId: string): Promise<C
     ).all();
 
     if (!result.results || result.results.length === 0) {
-      console.warn(`No campaigns found for zone ID: ${zoneId}`);
+      logWarning(`No campaigns found for zone ID: ${zoneId}`);
       return [];
     }
 
@@ -1025,7 +942,8 @@ async function fetchEligibleCampaigns(db: D1Database, zoneId: string): Promise<C
       };
     });
   } catch (error) {
-    console.error('Error fetching eligible campaigns:', error);
+    logError('Error fetching eligible campaigns:');
+    logError(error instanceof Error ? error.message : String(error));
     return [];
   }
 }
@@ -1087,12 +1005,14 @@ async function recordClick(db: D1Database, clickData: {
     
     // Only validate campaign ID if it's not null
     if (campaignIdNum !== null && !isValidId(campaignIdNum)) {
-      console.error('Invalid campaign ID format in click data:', clickData);
+      logError('Invalid campaign ID format in click data:');
+      logError(JSON.stringify(clickData));
       return;
     }
     
     if (!isValidId(zoneIdNum)) {
-      console.error('Invalid zone ID format in click data:', clickData);
+      logError('Invalid zone ID format in click data:');
+      logError(JSON.stringify(clickData));
       return;
     }
     
@@ -1162,9 +1082,10 @@ async function recordClick(db: D1Database, clickData: {
     ).run();
     
     const campaignIdText = campaignIdNum ?? 'NULL';
-    console.warn(`${clickData.event_type ?? 'Click'} event recorded with ID ${snowflakeId} for campaign ${campaignIdText}, zone ${zoneIdNum}`);
+    logWarning(`${clickData.event_type ?? 'Click'} event recorded with ID ${snowflakeId} for campaign ${campaignIdText}, zone ${zoneIdNum}`);
   } catch (error) {
-    console.error('Error recording click event:', error);
+    logError('Error recording click event:');
+    logError(error instanceof Error ? error.message : String(error));
   }
 }
 
@@ -1210,7 +1131,8 @@ async function fetchZone(db: D1Database, zoneId: string): Promise<{ id: number; 
       traffic_back_url: zone.traffic_back_url
     };
   } catch (error) {
-    console.error('Error fetching zone:', error);
+    logError('Error fetching zone:');
+    logError(error instanceof Error ? error.message : String(error));
     return null;
   }
 }
@@ -1244,7 +1166,8 @@ async function fetchCampaign(db: D1Database, campaignId: string | number): Promi
       redirect_url: campaign.redirect_url
     };
   } catch (error) {
-    console.error('Error fetching campaign:', error);
+    logError('Error fetching campaign:');
+    logError(error instanceof Error ? error.message : String(error));
     return null;
   }
 }
@@ -1272,7 +1195,8 @@ async function listTargetingRuleTypes(env: Env): Promise<Response> {
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
-    console.error('Error listing targeting rule types:', error);
+    logError('Error listing targeting rule types:');
+    logError(error instanceof Error ? error.message : String(error));
     return new Response(JSON.stringify({ error: 'Server error listing targeting rule types' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
@@ -1428,7 +1352,8 @@ async function listZones(request: Request, env: Env): Promise<Response> {
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
-    console.error('Error listing zones:', error);
+    logError('Error listing zones:');
+    logError(error instanceof Error ? error.message : String(error));
     return new Response(JSON.stringify({ error: 'Server error listing zones' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
@@ -1481,7 +1406,8 @@ async function getZone(zoneId: string | undefined, env: Env): Promise<Response> 
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
-    console.error('Error fetching zone:', error);
+    logError('Error fetching zone:');
+    logError(error instanceof Error ? error.message : String(error));
     return new Response(JSON.stringify({ error: 'Server error fetching zone' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
@@ -1572,7 +1498,8 @@ async function createZone(request: Request, env: Env): Promise<Response> {
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
-    console.error('Error creating zone:', error);
+    logError('Error creating zone:');
+    logError(error instanceof Error ? error.message : String(error));
     return new Response(JSON.stringify({ error: 'Server error creating zone' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
@@ -1677,7 +1604,8 @@ async function updateZone(zoneId: string | undefined, request: Request, env: Env
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
-    console.error('Error updating zone:', error);
+    logError('Error updating zone:');
+    logError(error instanceof Error ? error.message : String(error));
     return new Response(JSON.stringify({ error: 'Server error updating zone' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
@@ -1764,7 +1692,8 @@ async function deleteZone(zoneId: string | undefined, env: Env): Promise<Respons
       status: 204
     });
   } catch (error) {
-    console.error('Error deleting zone:', error);
+    logError('Error deleting zone:');
+    logError(error instanceof Error ? error.message : String(error));
     return new Response(JSON.stringify({ error: 'Server error deleting zone' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
@@ -1921,7 +1850,8 @@ async function listAdEvents(request: Request, env: Env): Promise<Response> {
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
-    console.error('Error listing ad events:', error);
+    logError('Error listing ad events:');
+    logError(error instanceof Error ? error.message : String(error));
     return new Response(JSON.stringify({ error: 'Server error listing ad events' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
@@ -2044,7 +1974,8 @@ async function getStats(request: Request, env: Env): Promise<Response> {
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
-    console.error('Error fetching stats:', error);
+    logError('Error fetching stats:');
+    logError(error instanceof Error ? error.message : String(error));
     return new Response(JSON.stringify({ 
       error: 'Error fetching statistics'
     }), {
