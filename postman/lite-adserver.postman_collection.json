@@ -586,7 +586,7 @@
                   {
                     "key": "group_by",
                     "value": "date",
-                    "description": "Field to group by (date, campaign_id, zone_id, country)"
+                    "description": "Field to group by (date, campaign_id, zone_id, country, sub_id)"
                   }
                 ]
               },

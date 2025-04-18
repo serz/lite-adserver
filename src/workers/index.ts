@@ -1882,10 +1882,10 @@ async function getStats(request: Request, env: Env): Promise<Response> {
     const groupByParam = params.get('group_by') ?? 'date';
     
     // Validate group_by parameter
-    const validGroupByValues = ['date', 'campaign_id', 'zone_id', 'country'];
+    const validGroupByValues = ['date', 'campaign_id', 'zone_id', 'country', 'sub_id'];
     if (!validGroupByValues.includes(groupByParam)) {
       return new Response(JSON.stringify({ 
-        error: 'Invalid group_by parameter. Valid values are: date, campaign_id, zone_id, country' 
+        error: 'Invalid group_by parameter. Valid values are: date, campaign_id, zone_id, country, sub_id' 
       }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' }
@@ -1938,6 +1938,10 @@ async function getStats(request: Request, env: Env): Promise<Response> {
       case 'country':
         groupByClause = 'country';
         selectClause = 'country';
+        break;
+      case 'sub_id':
+        groupByClause = 'sub_id';
+        selectClause = 'sub_id';
         break;
     }
     

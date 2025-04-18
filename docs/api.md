@@ -661,7 +661,7 @@ Retrieves aggregated statistics based on various filters and grouping options.
 | to           | integer | End timestamp in milliseconds                              | Current timestamp |
 | campaign_ids | string  | Comma-separated list of campaign IDs to filter by          | (all)            |
 | zone_ids     | string  | Comma-separated list of zone IDs to filter by              | (all)            |
-| group_by     | string  | Field to group by (date, campaign_id, zone_id, country)    | date             |
+| group_by     | string  | Field to group by (date, campaign_id, zone_id, country, sub_id)    | date             |
 
 **Example Request**:
 
@@ -752,6 +752,47 @@ curl -H "Authorization: Bearer your-api-key-here" \
 ```bash
 curl -H "Authorization: Bearer your-api-key-here" \
   "https://your-api-url.com/api/stats?from=1657152000000&to=1657238400000&group_by=country"
+```
+
+**Example: Group by sub_id**
+
+```bash
+curl -H "Authorization: Bearer your-api-key-here" \
+  "https://your-api-url.com/api/stats?from=1657152000000&to=1657238400000&group_by=sub_id"
+```
+
+**Response**:
+
+```json
+{
+  "stats": [
+    {
+      "sub_id": "affiliate_123",
+      "impressions": 720,
+      "fallbacks": 15,
+      "unsold": 35,
+      "clicks": 38
+    },
+    {
+      "sub_id": "partner_456",
+      "impressions": 680,
+      "fallbacks": 12,
+      "unsold": 28,
+      "clicks": 32
+    },
+    {
+      "sub_id": null,
+      "impressions": 200,
+      "fallbacks": 8,
+      "unsold": 12,
+      "clicks": 7
+    }
+  ],
+  "period": {
+    "from": 1657152000000,
+    "to": 1657238400000
+  }
+}
 ```
 
 ## Error Responses
