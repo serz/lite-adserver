@@ -3,6 +3,7 @@
  */
 
 import type { KVNamespace } from '@cloudflare/workers-types';
+import type { ScheduledEvent } from '@cloudflare/workers-types';
 import { TargetingRule } from '../models/TargetingRule';
 import { CounterDO } from './counter';
 import { parseAndValidateId, parseId, isValidId } from '../utils/idValidation';
@@ -160,6 +161,23 @@ export default {
       headers: { 'content-type': 'text/plain' },
     });
     return applySecurityHeaders(defaultResponse, request, env);
+  },
+  
+  // Handler for scheduled events
+  async scheduled(event: ScheduledEvent, env: Env): Promise<void> {
+    console.log(`Running scheduled sync at ${new Date().toISOString()}`);
+    
+    try {
+      // Create a SyncEnv from Env
+      const syncEnv = env as import('../services/syncService').SyncEnv;
+      
+      // Call syncAll to sync both campaigns and zones
+      await import('../services/syncService').then(({ syncAll }) => syncAll(syncEnv));
+      
+      console.log(`Scheduled sync completed successfully at ${new Date().toISOString()}`);
+    } catch (error) {
+      console.error(`Error in scheduled sync: ${error instanceof Error ? error.message : String(error)}`);
+    }
   },
 };
 

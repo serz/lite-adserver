@@ -28,3 +28,8 @@ class_name = "CounterDO"
 [[migrations]]
 tag = "v1"
 new_classes = ["CounterDO"]
+
+# Scheduled triggers for automatic syncing
+[[triggers]]
+cron = "*/5 * * * *" # Run hourly (at minute 0)
+type = "scheduled"
