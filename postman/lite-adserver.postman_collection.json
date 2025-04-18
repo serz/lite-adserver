@@ -595,6 +595,90 @@
           }
         ],
         "description": "Endpoints for retrieving performance metrics and analytics."
+      },
+      {
+        "name": "Sync",
+        "item": [
+          {
+            "name": "Get Sync State",
+            "request": {
+              "method": "GET",
+              "header": [],
+              "url": {
+                "raw": "{{base_url}}/api/sync/state",
+                "host": ["{{base_url}}"],
+                "path": ["api", "sync", "state"]
+              },
+              "description": "Retrieves the current state of campaigns and zones in KV storage."
+            }
+          },
+          {
+            "name": "Sync All Data",
+            "request": {
+              "method": "POST",
+              "header": [],
+              "url": {
+                "raw": "{{base_url}}/api/sync",
+                "host": ["{{base_url}}"],
+                "path": ["api", "sync"]
+              },
+              "description": "Syncs all campaigns and zones from D1 to KV storage."
+            }
+          },
+          {
+            "name": "Sync All Campaigns",
+            "request": {
+              "method": "POST",
+              "header": [],
+              "url": {
+                "raw": "{{base_url}}/api/sync/campaigns",
+                "host": ["{{base_url}}"],
+                "path": ["api", "sync", "campaigns"]
+              },
+              "description": "Syncs all active campaigns from D1 to KV storage."
+            }
+          },
+          {
+            "name": "Sync All Zones",
+            "request": {
+              "method": "POST",
+              "header": [],
+              "url": {
+                "raw": "{{base_url}}/api/sync/zones",
+                "host": ["{{base_url}}"],
+                "path": ["api", "sync", "zones"]
+              },
+              "description": "Syncs all active zones from D1 to KV storage."
+            }
+          },
+          {
+            "name": "Sync Specific Campaign",
+            "request": {
+              "method": "POST",
+              "header": [],
+              "url": {
+                "raw": "{{base_url}}/api/sync/campaigns/1",
+                "host": ["{{base_url}}"],
+                "path": ["api", "sync", "campaigns", "1"]
+              },
+              "description": "Syncs a specific campaign from D1 to KV storage based on the provided ID."
+            }
+          },
+          {
+            "name": "Sync Specific Zone",
+            "request": {
+              "method": "POST",
+              "header": [],
+              "url": {
+                "raw": "{{base_url}}/api/sync/zones/1",
+                "host": ["{{base_url}}"],
+                "path": ["api", "sync", "zones", "1"]
+              },
+              "description": "Syncs a specific zone from D1 to KV storage based on the provided ID."
+            }
+          }
+        ],
+        "description": "Endpoints for syncing data between D1 database and KV storage."
       }
     ]
   }

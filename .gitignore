@@ -30,6 +30,7 @@ wrangler-local-state
 !.vscode/extensions.json
 *.code-workspace
 .DS_Store
+.cursor.json
 
 # Testing
 coverage/

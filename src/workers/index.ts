@@ -2,11 +2,14 @@
  * Lite Ad Server - Cloudflare Worker Entry Point
  */
 
+import type { KVNamespace } from '@cloudflare/workers-types';
 import { TargetingRule } from '../models/TargetingRule';
 import { CounterDO } from './counter';
 import { parseAndValidateId, parseId, isValidId } from '../utils/idValidation';
 import { generateSnowflakeId } from '../utils/snowflake';
 import { replaceMacros } from '../utils/macros';
+import { handleSyncApiRequests } from '../services/syncService';
+import { hasValidAuthorization } from '../utils/auth';
 // Re-export the CounterDO class needed by the Durable Object binding in wrangler.toml
 export { CounterDO };
 
@@ -19,6 +22,8 @@ export interface Env {
   API_KEY?: string;
   // Allowed origins for CORS
   ALLOWED_ORIGINS?: string;
+  // KV namespace for campaigns and zones
+  campaigns_zones: KVNamespace;
 }
 
 // Security headers to apply to all responses
@@ -163,21 +168,22 @@ export default {
  */
 async function handleApiRequest(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
-  const path = url.pathname.endsWith('/') ? url.pathname.slice(0, -1) : url.pathname;
+  const path = url.pathname;
   
-  // API Authentication
-  // Basic check for API key in Authorization header (Bearer token)
-  const authHeader = request.headers.get('Authorization');
-  const apiKey = env.API_KEY ?? 'test-api-key-1234567890';
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ') || authHeader.substring(7) !== apiKey) {
-    return new Response(JSON.stringify({ error: 'Unauthorized. API key required' }), { 
+  // Check if the request has valid authorization
+  if (!hasValidAuthorization(request, env)) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' }
     });
   }
+
+  // Handle sync API requests
+  if (path.startsWith('/api/sync')) {
+    return await handleSyncApiRequests(request, env);
+  }
   
-  // Handle campaigns routes
+  // Handle other API requests
   if (path.startsWith('/api/campaigns')) {
     return handleCampaignApiRequests(request, env);
   }

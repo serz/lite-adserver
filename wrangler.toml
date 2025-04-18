@@ -14,6 +14,12 @@ binding = "DB"
 database_name = "lite_adserver_db"
 database_id = "57b8bd9d-8ee8-4387-b4e3-e980085750f3"
 
+# KV namespace for campaigns and zones
+[[kv_namespaces]]
+binding = "campaigns_zones"
+id = "a138ffd0b6b24523a088f3af445ff75b"
+preview_id = "02eca48c94bf46448bf8536d647ca587"
+
 # Durable Objects for counters and statistics
 [[durable_objects.bindings]]
 name = "COUNTER"
@@ -22,23 +28,3 @@ class_name = "CounterDO"
 [[migrations]]
 tag = "v1"
 new_classes = ["CounterDO"]
-
-# Define environments
-[env.production]
-# Production-specific settings
-
-[env.production.vars]
-# API key for production
-API_KEY = "production-api-key-secure"
-# Allowed origins (comma-separated)
-ALLOWED_ORIGINS = ""
-
-[env.staging.vars]
-# API key for staging
-API_KEY = "staging-api-key-secure"
-ALLOWED_ORIGINS = ""
-
-[env.development.vars]
-# API key for development
-API_KEY = "development-api-key-secure"
-ALLOWED_ORIGINS = ""
