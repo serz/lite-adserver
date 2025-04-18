@@ -12,6 +12,31 @@ export interface SyncEnv extends Env {
 }
 
 /**
+ * Type for campaign data
+ */
+interface Campaign {
+  id: number;
+  name: string;
+  redirect_url: string;
+  status: string;
+  start_date?: number;
+  end_date?: number;
+  targeting_rules: TargetingRule[];
+  [key: string]: unknown;
+}
+
+/**
+ * Type for targeting rule data
+ */
+interface TargetingRule {
+  targeting_rule_type_id: number;
+  targeting_method: string;
+  rule: string;
+  campaign_id?: number;
+  [key: string]: unknown;
+}
+
+/**
  * Handle sync API requests
  */
 export async function handleSyncApiRequests(request: Request, env: SyncEnv): Promise<Response> {
@@ -90,8 +115,8 @@ export async function syncAll(env: SyncEnv): Promise<Response> {
     const campaignsStatus = syncCampaignsResponse.status;
     const zonesStatus = syncZonesResponse.status;
     
-    const campaignsData = await syncCampaignsResponse.json() as Record<string, any>;
-    const zonesData = await syncZonesResponse.json() as Record<string, any>;
+    const campaignsData = await syncCampaignsResponse.json() as Record<string, unknown>;
+    const zonesData = await syncZonesResponse.json() as Record<string, unknown>;
     
     // If either operation failed, return error response
     if (campaignsStatus !== 200 || zonesStatus !== 200) {
@@ -172,19 +197,21 @@ export async function syncAllCampaigns(env: SyncEnv): Promise<Response> {
       const rules = rulesResult.results ?? [];
       
       // Organize rules by campaign
-      const rulesByCampaign = rules.reduce((acc: Record<number, any[]>, rule: any) => {
-        const campaignId = rule.campaign_id;
-        if (!acc[campaignId]) {
-          acc[campaignId] = [];
+      const rulesByCampaign = rules.reduce<Record<number, TargetingRule[]>>((acc, rule) => {
+        const campaignId = (rule as TargetingRule).campaign_id;
+        if (campaignId !== undefined) {
+          if (!acc[campaignId]) {
+            acc[campaignId] = [];
+          }
+          acc[campaignId].push(rule as TargetingRule);
         }
-        acc[campaignId].push(rule);
         return acc;
       }, {});
       
       // Add targeting rules to each campaign
       for (const campaign of campaigns) {
         const campaignId = (campaign as { id: number }).id;
-        (campaign as any).targeting_rules = rulesByCampaign[campaignId] || [];
+        (campaign as Campaign).targeting_rules = rulesByCampaign[campaignId] ?? [];
       }
     }
     
@@ -275,11 +302,11 @@ export async function syncCampaign(campaignId: string, env: SyncEnv): Promise<Re
     
     // Get all campaigns from KV
     const campaignsJson = await env.campaigns_zones.get('campaigns');
-    let campaigns = [];
+    let campaigns: Campaign[] = [];
     
     if (campaignsJson) {
       try {
-        campaigns = JSON.parse(campaignsJson);
+        campaigns = JSON.parse(campaignsJson) as Campaign[];
       } catch (e) {
         console.error('Error parsing campaigns JSON from KV:', e);
         campaigns = [];
@@ -304,7 +331,7 @@ export async function syncCampaign(campaignId: string, env: SyncEnv): Promise<Re
       });
     }
     
-    const campaign = campaignResult.results[0];
+    const campaign = campaignResult.results[0] as Campaign;
     
     // Get targeting rules for the campaign
     const rulesResult = await env.DB.prepare(`
@@ -323,17 +350,17 @@ export async function syncCampaign(campaignId: string, env: SyncEnv): Promise<Re
     }
     
     // Add targeting rules to the campaign
-    (campaign as any).targeting_rules = rulesResult.results ?? [];
+    campaign.targeting_rules = rulesResult.results as TargetingRule[] ?? [];
     
     // Check if campaign should be active based on dates
     const isActive = 
-      (campaign as any).status === 'active' && 
-      (!(campaign as any).start_date || (campaign as any).start_date <= now) &&
-      (!(campaign as any).end_date || (campaign as any).end_date >= now);
+      (campaign.status === 'active') && 
+      (!campaign.start_date || campaign.start_date <= now) &&
+      (!campaign.end_date || campaign.end_date >= now);
     
     // Update the campaigns list for KV
     // Remove existing campaign with this ID if present
-    campaigns = campaigns.filter((c: any) => c.id !== id);
+    campaigns = campaigns.filter((c: Campaign) => c.id !== id);
     
     // Add campaign if it's active
     if (isActive) {
@@ -407,7 +434,7 @@ export async function syncZone(zoneId: string, env: SyncEnv): Promise<Response> 
       // Store zone in KV
       await env.campaigns_zones.put(`zones:${id}`, JSON.stringify({
         id,
-        traffic_back_url: zone.traffic_back_url || null
+        traffic_back_url: zone.traffic_back_url ?? null
       }));
     } else {
       // Delete zone from KV if it exists but is not active
@@ -441,7 +468,7 @@ export async function getSyncState(env: SyncEnv): Promise<Response> {
   try {
     // Get campaigns from KV
     const campaignsJson = await env.campaigns_zones.get('campaigns');
-    const campaigns = campaignsJson ? JSON.parse(campaignsJson) : [];
+    const campaigns: Campaign[] = campaignsJson ? JSON.parse(campaignsJson) as Campaign[] : [];
     
     // List all KV keys to find zone entries
     const keys = await env.campaigns_zones.list();
@@ -451,7 +478,7 @@ export async function getSyncState(env: SyncEnv): Promise<Response> {
     
     const zonesPromises = zoneKeys.map(async key => {
       const zoneData = await env.campaigns_zones.get(key.name);
-      return zoneData ? JSON.parse(zoneData) : null;
+      return zoneData ? JSON.parse(zoneData) as Record<string, unknown> : null;
     });
     
     const zones = await Promise.all(zonesPromises);
