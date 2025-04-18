@@ -744,11 +744,11 @@ async function handleAdServing(request: Request, env: Env): Promise<Response> {
   
   try {
     // Fetch eligible campaigns based on zone targeting
-    const campaigns = await fetchEligibleCampaigns(env.DB, zoneId);
+    const campaigns = await fetchEligibleCampaigns(env, zoneId);
     
     if (!campaigns || campaigns.length === 0) {
       // If no campaigns are eligible, check if zone has a traffic back URL
-      const zone = await fetchZone(env.DB, zoneId);
+      const zone = await fetchZone(env, zoneId);
       
       if (zone?.traffic_back_url) {
         // Record fallback click before redirecting
@@ -862,7 +862,7 @@ async function handleTracking(request: Request, env: Env): Promise<Response> {
       });
       
       // Fetch campaign redirect URL
-      const campaign = await fetchCampaign(env.DB, campaignId);
+      const campaign = await fetchCampaign(env, campaignId);
       
       if (!campaign?.redirect_url) {
         return new Response('Invalid campaign', { status: 404 });
@@ -887,11 +887,106 @@ async function handleTracking(request: Request, env: Env): Promise<Response> {
   }
 }
 
+function detectDeviceType(userAgent: string): string {
+  if (/mobile/i.test(userAgent)) {
+    return 'mobile';
+  } else if (/tablet/i.test(userAgent)) {
+    return 'tablet';
+  } else {
+    return 'desktop';
+  }
+}
+
+/**
+ * Fetch zone details
+ */
+async function fetchZone(env: Env, zoneId: string): Promise<{ id: number; traffic_back_url?: string } | null> {
+  try {
+    // Convert zoneId to number for numeric ID
+    const zoneIdNum = parseAndValidateId(zoneId, 'zone');
+    if (zoneIdNum === null) {
+      return null;
+    }
+    
+    // Fetch zone from KV
+    const zoneKey = `zones:${zoneIdNum}`;
+    const zoneDataRaw = await env.campaigns_zones.get(zoneKey, { type: 'json' });
+    
+    // Type assertion for the zone data
+    interface ZoneData {
+      id: number;
+      traffic_back_url?: string;
+    }
+    
+    // Check if we have zone data
+    const zoneData = zoneDataRaw as ZoneData | null;
+    if (!zoneData) {
+      return null;
+    }
+    
+    // Return required zone details
+    return {
+      id: zoneData.id,
+      traffic_back_url: zoneData.traffic_back_url
+    };
+  } catch (error) {
+    logError(`Error fetching zone ${zoneId} from KV:`);
+    logError(error instanceof Error ? error.message : String(error));
+    return null;
+  }
+}
+
+/**
+ * Fetch campaign details by ID
+ */
+async function fetchCampaign(env: Env, campaignId: string | number): Promise<{ id: number; redirect_url: string } | null> {
+  try {
+    // Convert campaignId to number if it's a string
+    const campaignIdNum = parseAndValidateId(campaignId, 'campaign');
+    if (campaignIdNum === null) {
+      return null;
+    }
+
+    // Fetch campaigns from KV
+    const campaignsJson = await env.campaigns_zones.get('campaigns');
+    if (!campaignsJson) {
+      return null;
+    }
+    
+    // Parse campaigns JSON
+    interface CampaignData {
+      id: number;
+      name: string;
+      redirect_url: string;
+      start_date?: number;
+      end_date?: number;
+      [key: string]: unknown;
+    }
+    
+    const campaigns = JSON.parse(campaignsJson) as CampaignData[];
+    
+    // Find the campaign by ID
+    const campaign = campaigns.find(c => c.id === campaignIdNum);
+    if (!campaign) {
+      return null;
+    }
+    
+    return {
+      id: campaign.id,
+      redirect_url: campaign.redirect_url
+    };
+  } catch (error) {
+    logError(`Error fetching campaign ${campaignId} from KV:`);
+    logError(error instanceof Error ? error.message : String(error));
+    return null;
+  }
+}
+
 /**
  * Fetch eligible campaigns based on zone targeting
- * Simplified for development - fetches active campaigns that match the provided zone ID
+ * Uses KV storage to fetch active campaigns that match the provided zone ID
  */
-async function fetchEligibleCampaigns(db: D1Database, zoneId: string): Promise<CampaignDetail[]> {
+async function fetchEligibleCampaigns(env: Env, zoneId: string): Promise<CampaignDetail[]> {
   try {
     // Validate zone ID
     const zoneIdNum = parseAndValidateId(zoneId, 'zone');
@@ -900,49 +995,69 @@ async function fetchEligibleCampaigns(db: D1Database, zoneId: string): Promise<C
       return [];
     }
 
-    // For development, we'll still use the zone ID but without complex targeting rules
-    const result = await db.prepare(`
-      SELECT c.id, c.name, c.redirect_url, c.status
-      FROM campaigns c
-      JOIN targeting_rules tr ON c.id = tr.campaign_id
-      WHERE c.status = 'active'
-      AND (c.start_date IS NULL OR c.start_date <= unixepoch()) 
-      AND (c.end_date IS NULL OR c.end_date >= unixepoch())
-      AND tr.targeting_rule_type_id = 4 -- Zone ID type
-      AND tr.targeting_method = 'whitelist'
-      AND (tr.rule = ? OR tr.rule LIKE ? OR tr.rule LIKE ? OR tr.rule LIKE ?)
-      LIMIT 5
-    `).bind(
-      zoneIdNum.toString(),
-      `${zoneIdNum},%`,
-      `%,${zoneIdNum},%`,
-      `%,${zoneIdNum}`
-    ).all();
-
-    if (!result.results || result.results.length === 0) {
-      logWarning(`No campaigns found for zone ID: ${zoneId}`);
+    // Fetch campaigns from KV
+    const campaignsJson = await env.campaigns_zones.get('campaigns');
+    if (!campaignsJson) {
       return [];
     }
-
-    // Convert results to CampaignDetail objects with empty targeting rules arrays
-    return result.results.map(row => {
-      const campaign = row as {
-        id: number;
-        name: string;
-        redirect_url: string;
-        status: string;
-      };
+    
+    // Parse campaigns JSON
+    interface CampaignData {
+      id: number;
+      name: string;
+      redirect_url: string;
+      status: string;
+      start_date?: number;
+      end_date?: number;
+      targeting_rules: Array<{
+        targeting_rule_type_id: number;
+        targeting_method: string;
+        rule: string;
+      }>;
+      [key: string]: unknown;
+    }
+    
+    const campaigns = JSON.parse(campaignsJson) as CampaignData[];
+    const now = Math.floor(Date.now() / 1000);
+    
+    // Filter campaigns
+    const eligibleCampaigns = campaigns.filter(campaign => {
+      // Filter by date range - status check removed as only active campaigns are stored in KV
+      if (campaign.start_date && campaign.start_date > now) {
+        return false;
+      }
+      
+      if (campaign.end_date && campaign.end_date < now) {
+        return false;
+      }
+      
+      // Check if campaign targets this zone
+      return campaign.targeting_rules.some(rule => {
+        if (rule.targeting_rule_type_id !== 4 || rule.targeting_method !== 'whitelist') {
+          return false;
+        }
+        
+        // Check if zone ID is in the targeting rule
+        const zoneIds = rule.rule.split(',').map(id => parseInt(id.trim(), 10));
+        return zoneIds.includes(zoneIdNum);
+      });
+    });
+    
+    // Map to CampaignDetail format
+    return eligibleCampaigns.map(campaign => {
+      // Type assertion for targeting rules to match CampaignDetail interface
+      const targetingRules = campaign.targeting_rules as unknown as import('../models/TargetingRule').TargetingRule[];
       
       return {
         id: campaign.id,
         name: campaign.name,
         redirect_url: campaign.redirect_url,
         status: campaign.status,
-        targeting_rules: [] // Empty array as we're skipping targeting rules for development
+        targeting_rules: targetingRules
       };
     });
   } catch (error) {
-    logError('Error fetching eligible campaigns:');
+    logError(`Error fetching eligible campaigns for zone ${zoneId} from KV:`);
     logError(error instanceof Error ? error.message : String(error));
     return [];
   }
@@ -1086,89 +1201,6 @@ async function recordClick(db: D1Database, clickData: {
   } catch (error) {
     logError('Error recording click event:');
     logError(error instanceof Error ? error.message : String(error));
-  }
-}
-
-/**
- * Detect device type from user agent
- */
-function detectDeviceType(userAgent: string): string {
-  if (/mobile/i.test(userAgent)) {
-    return 'mobile';
-  } else if (/tablet/i.test(userAgent)) {
-    return 'tablet';
-  } else {
-    return 'desktop';
-  }
-}
-
-/**
- * Fetch zone details
- */
-async function fetchZone(db: D1Database, zoneId: string): Promise<{ id: number; traffic_back_url?: string } | null> {
-  try {
-    // Convert zoneId to number for numeric ID
-    const zoneIdNum = parseAndValidateId(zoneId, 'zone');
-    if (zoneIdNum === null) {
-      return null;
-    }
-    
-    const result = await db.prepare(`
-      SELECT id, traffic_back_url
-      FROM zones
-      WHERE id = ? AND status = 'active'
-    `).bind(zoneIdNum).first();
-    
-    if (!result) {
-      return null;
-    }
-    
-    // Type assertion for result
-    const zone = result as { id: number; traffic_back_url?: string };
-    
-    return {
-      id: zone.id,
-      traffic_back_url: zone.traffic_back_url
-    };
-  } catch (error) {
-    logError('Error fetching zone:');
-    logError(error instanceof Error ? error.message : String(error));
-    return null;
-  }
-}
-
-/**
- * Fetch campaign details by ID
- */
-async function fetchCampaign(db: D1Database, campaignId: string | number): Promise<{ id: number; redirect_url: string } | null> {
-  try {
-    // Convert campaignId to number if it's a string
-    const campaignIdNum = parseAndValidateId(campaignId, 'campaign');
-    if (campaignIdNum === null) {
-      return null;
-    }
-
-    const result = await db.prepare(`
-      SELECT id, redirect_url
-      FROM campaigns
-      WHERE id = ?
-    `).bind(campaignIdNum).first();
-    
-    if (!result) {
-      return null;
-    }
-    
-    // Type assertion for result
-    const campaign = result as { id: number; redirect_url: string };
-    
-    return {
-      id: campaign.id,
-      redirect_url: campaign.redirect_url
-    };
-  } catch (error) {
-    logError('Error fetching campaign:');
-    logError(error instanceof Error ? error.message : String(error));
-    return null;
   }
 }
 
