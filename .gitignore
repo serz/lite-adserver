@@ -13,6 +13,7 @@ dist/
 .dev.vars
 .wrangler/
 wrangler-local-state
+wrangler.toml
 
 # Environment variables
 .env

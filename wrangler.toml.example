@@ -4,12 +4,12 @@ compatibility_date = "2023-10-30"
 
 # Custom domain configuration
 routes = [
-  { pattern = "lite-adserver.affset.com", custom_domain = true }
+  { pattern = "your-custom-domain.example.com", custom_domain = true }
 ]
 
 # Environment variables
 [vars]
-API_KEY = "test-api-key-1234567890"
+API_KEY = "your-api-key-here"
 # Default to allow all origins in development (empty string = all origins)
 ALLOWED_ORIGINS = ""
 
@@ -17,13 +17,13 @@ ALLOWED_ORIGINS = ""
 [[d1_databases]]
 binding = "DB"
 database_name = "lite_adserver_db"
-database_id = "57b8bd9d-8ee8-4387-b4e3-e980085750f3"
+database_id = "your-d1-database-id-here"
 
 # KV namespace for campaigns and zones
 [[kv_namespaces]]
 binding = "campaigns_zones"
-id = "a138ffd0b6b24523a088f3af445ff75b"
-preview_id = "02eca48c94bf46448bf8536d647ca587"
+id = "your-kv-namespace-id-here"
+preview_id = "your-kv-preview-id-here"
 
 # Durable Objects for counters and statistics
 [[durable_objects.bindings]]

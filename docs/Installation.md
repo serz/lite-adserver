@@ -20,7 +20,22 @@
    npm install
    ```
 
-3. **Initialize the database**
+3. **Configure Wrangler**
+   ```bash
+   cp wrangler.toml.example wrangler.toml
+   ```
+   Edit the `wrangler.toml` file and replace placeholders with your actual values:
+   - `your-custom-domain.example.com` - Your custom domain if applicable
+   - `your-api-key-here` - A secure API key for administration
+   - `your-d1-database-id-here` - Your Cloudflare D1 database ID
+   - `your-kv-namespace-id-here` - Your Cloudflare KV namespace ID
+   - `your-kv-preview-id-here` - Your Cloudflare KV preview namespace ID
+
+   You can create these resources using the Cloudflare dashboard or Wrangler CLI commands.
+   
+   > **Note:** The `wrangler.toml` file is ignored by git for security reasons to prevent committing sensitive data like API keys and database IDs. Each developer should maintain their own local configuration.
+
+4. **Initialize the database**
    ```bash
    ./dev_scripts/init_db.sh
    ```
@@ -29,7 +44,7 @@
    - Run database migrations to create the schema
    - Exit when complete
 
-4. **Seed the database with example data**
+5. **Seed the database with example data**
    ```bash
    ./dev_scripts/seed_example_data.sh
    ```
@@ -39,7 +54,7 @@
    - Geographic targeting (US and Canada)
    - Device targeting (desktop only)
 
-5. **Start the development server**
+6. **Start the development server**
    ```bash
    npm run dev
    # or
