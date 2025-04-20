@@ -554,6 +554,18 @@ async function updateCampaign(campaignId: string | undefined, request: Request, 
       params.push(updateData.status);
     }
 
+    if (updateData.start_date !== undefined) {
+      updateFields.push('start_date = ?');
+      // Handle null case explicitly for SQLite
+      params.push(updateData.start_date === null ? null as unknown as number : updateData.start_date);
+    }
+
+    if (updateData.end_date !== undefined) {
+      updateFields.push('end_date = ?');
+      // Handle null case explicitly for SQLite
+      params.push(updateData.end_date === null ? null as unknown as number : updateData.end_date);
+    }
+
     if (updateData.traffic_back_url !== undefined) {
       updateFields.push('traffic_back_url = ?');
       params.push(updateData.traffic_back_url);
