@@ -557,13 +557,13 @@ async function updateCampaign(campaignId: string | undefined, request: Request, 
     if (updateData.start_date !== undefined) {
       updateFields.push('start_date = ?');
       // Handle null case explicitly for SQLite
-      params.push(updateData.start_date === null ? null as unknown as number : updateData.start_date);
+      params.push(updateData.start_date ?? null as unknown as number);
     }
 
     if (updateData.end_date !== undefined) {
       updateFields.push('end_date = ?');
       // Handle null case explicitly for SQLite
-      params.push(updateData.end_date === null ? null as unknown as number : updateData.end_date);
+      params.push(updateData.end_date ?? null as unknown as number);
     }
 
     if (updateData.traffic_back_url !== undefined) {

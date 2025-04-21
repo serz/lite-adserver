@@ -249,7 +249,7 @@ export async function syncAllCampaigns(env: SyncEnv): Promise<Response> {
  */
 export async function syncAllZones(env: SyncEnv): Promise<Response> {
   try {
-    // Fetch all active zones
+    // Fetch all active zones from D1
     const zonesResult = await env.DB.prepare(`
       SELECT id, name, traffic_back_url
       FROM zones
@@ -263,27 +263,38 @@ export async function syncAllZones(env: SyncEnv): Promise<Response> {
     const zones = zonesResult.results ?? [];
     const activeZoneIds = new Set(zones.map(zone => (zone as { id: number }).id));
     
-    // Get all existing zone keys from KV
+    // Get list of all KV keys
     const existingKeys = await env.campaigns_zones.list();
-    const existingZoneKeys = existingKeys.keys
-      .filter(key => key.name && key.name.startsWith('zones:'))
-      .map(key => key.name as string);
     
-    // Delete zones that exist in KV but not in D1
-    const deletePromises = existingZoneKeys.map(async key => {
-      const zoneId = parseInt(key.split(':')[1], 10);
+    // Find keys to delete (zones in KV that don't exist in D1)
+    const deletePromises: Promise<void>[] = [];
+    
+    for (const key of existingKeys.keys) {
+      const keyName = key.name;
+      // Skip if not a zone key
+      if (!keyName || !keyName.startsWith('zones:')) continue;
+      
+      // Extract zone ID from key
+      const parts = keyName.split(':');
+      if (parts.length !== 2) continue;
+      
+      // Ensure parts[1] exists before parsing it
+      const zoneIdStr = parts[1];
+      if (!zoneIdStr) continue; 
+      
+      const zoneId = parseInt(zoneIdStr, 10);
+      // If zone doesn't exist in active D1 zones, delete it from KV
       if (!activeZoneIds.has(zoneId)) {
-        return env.campaigns_zones.delete(key);
+        deletePromises.push(env.campaigns_zones.delete(keyName));
       }
-      return Promise.resolve();
-    });
+    }
     
     // Store each active zone in its own KV key
-    const putPromises = zones.map(zone => {
+    const putPromises: Promise<void>[] = zones.map(zone => {
       const zoneId = (zone as { id: number }).id;
       return env.campaigns_zones.put(`zones:${zoneId}`, JSON.stringify({
         id: zoneId,
-        traffic_back_url: (zone as { traffic_back_url?: string }).traffic_back_url
+        traffic_back_url: (zone as { traffic_back_url?: string }).traffic_back_url ?? null
       }));
     });
     
@@ -293,7 +304,7 @@ export async function syncAllZones(env: SyncEnv): Promise<Response> {
     return new Response(JSON.stringify({
       success: true,
       synced_zones: zones.length,
-      deleted_zones: deletePromises.length - zones.length
+      removed_zones: deletePromises.length
     }), {
       headers: { 'Content-Type': 'application/json' }
     });
