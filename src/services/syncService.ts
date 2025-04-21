@@ -162,8 +162,8 @@ export async function syncAll(env: SyncEnv): Promise<Response> {
  */
 export async function syncAllCampaigns(env: SyncEnv): Promise<Response> {
   try {
-    // Get current timestamp in seconds
-    const now = Math.floor(Date.now() / 1000);
+    // Get current timestamp in milliseconds
+    const now = Date.now();
     
     // Fetch all active campaigns with targeting rules
     const campaignsResult = await env.DB.prepare(`
@@ -306,8 +306,8 @@ export async function syncCampaign(campaignId: string, env: SyncEnv): Promise<Re
       });
     }
     
-    // Get current timestamp in seconds
-    const now = Math.floor(Date.now() / 1000);
+    // Get current timestamp in milliseconds
+    const now = Date.now();
     
     // Get all campaigns from KV
     const campaignsJson = await env.campaigns_zones.get('campaigns');
