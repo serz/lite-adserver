@@ -20,6 +20,8 @@ export interface Env {
   ALLOWED_ORIGINS?: string;
   // KV namespace for campaigns and zones
   campaigns_zones: KVNamespace;
+  // Flag to indicate if this is a demo instance
+  DEMO_INSTANCE?: string;
 }
 
 /**

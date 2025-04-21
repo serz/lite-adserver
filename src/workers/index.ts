@@ -136,6 +136,11 @@ async function handleApiRequest(request: Request, env: Env): Promise<Response> {
     return await getStats(request, env);
   }
   
+  // Handle flush DB route (demo instances only)
+  if (path === '/api/flush-db' && request.method === 'POST') {
+    return await flushDatabase(env);
+  }
+  
   return new Response(JSON.stringify({ error: 'API endpoint not found' }), { 
     status: 404,
     headers: { 'Content-Type': 'application/json' } 
@@ -2026,6 +2031,73 @@ async function getStats(request: Request, env: Env): Promise<Response> {
     logError(error instanceof Error ? error.message : String(error));
     return new Response(JSON.stringify({ 
       error: 'Error fetching statistics'
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+/**
+ * Flush the database by truncating zones and campaigns tables.
+ * This function is ONLY for demo purposes and should NEVER be used in production.
+ * Using this function will result in permanent data loss.
+ */
+async function flushDatabase(env: Env): Promise<Response> {
+  try {
+    // Check if this is a demo instance
+    if (env.DEMO_INSTANCE !== 'true') {
+      return new Response(JSON.stringify({ 
+        error: 'This operation is only available on demo instances' 
+      }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Use D1's transaction API instead of SQL BEGIN TRANSACTION
+    const results = await env.DB.batch([
+      env.DB.prepare('DELETE FROM zones'),
+      env.DB.prepare('DELETE FROM campaigns')
+    ]);
+
+    // Get deletion counts
+    const zonesDeleted = results?.[0]?.meta ? results[0].meta['changes'] || 0 : 0;
+    const campaignsDeleted = results?.[1]?.meta ? results[1].meta['changes'] || 0 : 0;
+
+    // Clear KV data as well
+    try {
+      // First, list all keys in KV
+      const kvKeys = await env.campaigns_zones.list();
+      
+      // Delete each key
+      const kvDeletePromises = kvKeys.keys.map(key => 
+        env.campaigns_zones.delete(key.name)
+      );
+      
+      // Wait for all deletions to complete
+      await Promise.all(kvDeletePromises);
+    } catch (kvError) {
+      logError('Error clearing KV storage:');
+      logError(kvError instanceof Error ? kvError.message : String(kvError));
+      // Continue execution even if KV clearing fails
+    }
+
+    // Return success response
+    return new Response(JSON.stringify({ 
+      success: true,
+      message: 'Database and KV storage flushed successfully',
+      zones_deleted: zonesDeleted,
+      campaigns_deleted: campaignsDeleted
+    }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    logError('Error flushing database:');
+    logError(error instanceof Error ? error.message : String(error));
+    return new Response(JSON.stringify({ 
+      error: 'Server error flushing database',
+      details: error instanceof Error ? error.message : String(error)
     }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
