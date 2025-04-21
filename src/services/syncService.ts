@@ -222,7 +222,7 @@ export async function syncAllCampaigns(env: SyncEnv): Promise<Response> {
       }
     }
     
-    // Store in KV
+    // Store in KV - this replaces all campaigns with just the active ones
     await env.campaigns_zones.put('campaigns', JSON.stringify(campaigns));
     
     return new Response(JSON.stringify({
@@ -261,8 +261,24 @@ export async function syncAllZones(env: SyncEnv): Promise<Response> {
     }
     
     const zones = zonesResult.results ?? [];
+    const activeZoneIds = new Set(zones.map(zone => (zone as { id: number }).id));
     
-    // Store each zone in its own KV key
+    // Get all existing zone keys from KV
+    const existingKeys = await env.campaigns_zones.list();
+    const existingZoneKeys = existingKeys.keys
+      .filter(key => key.name && key.name.startsWith('zones:'))
+      .map(key => key.name as string);
+    
+    // Delete zones that exist in KV but not in D1
+    const deletePromises = existingZoneKeys.map(async key => {
+      const zoneId = parseInt(key.split(':')[1], 10);
+      if (!activeZoneIds.has(zoneId)) {
+        return env.campaigns_zones.delete(key);
+      }
+      return Promise.resolve();
+    });
+    
+    // Store each active zone in its own KV key
     const putPromises = zones.map(zone => {
       const zoneId = (zone as { id: number }).id;
       return env.campaigns_zones.put(`zones:${zoneId}`, JSON.stringify({
@@ -271,11 +287,13 @@ export async function syncAllZones(env: SyncEnv): Promise<Response> {
       }));
     });
     
-    await Promise.all(putPromises);
+    // Wait for all operations to complete
+    await Promise.all([...deletePromises, ...putPromises]);
     
     return new Response(JSON.stringify({
       success: true,
-      synced_zones: zones.length
+      synced_zones: zones.length,
+      deleted_zones: deletePromises.length - zones.length
     }), {
       headers: { 'Content-Type': 'application/json' }
     });
