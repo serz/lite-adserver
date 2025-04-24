@@ -10,9 +10,10 @@ import { replaceMacros } from '../utils/macros';
 import { handleSyncApiRequests } from '../services/syncService';
 import { hasValidAuthorization } from '../utils/auth';
 import { applySecurityHeaders } from '../utils/securityHeaders';
+import { selectEligibleCampaign } from '../services/campaignSelectionService';
+import { detectDeviceType } from '../utils/deviceDetection';
 import { 
   Env, 
-  CampaignDetail, 
   DbCampaign, 
   CampaignUpdateData, 
   ZoneUpdateData, 
@@ -760,10 +761,10 @@ async function handleAdServing(request: Request, env: Env): Promise<Response> {
   }
   
   try {
-    // Fetch eligible campaigns based on zone targeting
-    const campaigns = await fetchEligibleCampaigns(env, zoneId);
+    // Select an eligible campaign that passes all targeting rules in one step
+    const selectedCampaign = await selectEligibleCampaign(request, zoneId, env);
     
-    if (!campaigns || campaigns.length === 0) {
+    if (!selectedCampaign) {
       // If no campaigns are eligible, check if zone has a traffic back URL
       const zone = await fetchZone(env, zoneId);
       
@@ -801,27 +802,6 @@ async function handleAdServing(request: Request, env: Env): Promise<Response> {
       });
       
       return new Response('No eligible campaigns', { status: 404 });
-    }
-    
-    // Select a campaign based on targeting rules and weights
-    const selectedCampaign = selectCampaign(campaigns);
-    
-    if (!selectedCampaign) {
-      // No suitable campaign found after filtering - record as unsold impression
-      await recordClick(env.DB, {
-        campaign_id: null,
-        zone_id: zoneId,
-        ip: request.headers.get('CF-Connecting-IP') ?? undefined,
-        user_agent: request.headers.get('User-Agent') ?? undefined,
-        referer: request.headers.get('Referer') ?? undefined,
-        country: request.headers.get('CF-IPCountry') ?? undefined,
-        device_type: detectDeviceType(request.headers.get('User-Agent') ?? ''),
-        timestamp: Date.now(),
-        event_type: 'unsold',
-        sub_id: subId
-      });
-      
-      return new Response('No suitable campaign found', { status: 404 });
     }
     
     // Generate a tracking URL
@@ -901,16 +881,6 @@ async function handleTracking(request: Request, env: Env): Promise<Response> {
     logError('Error tracking:');
     logError(error instanceof Error ? error.message : String(error));
     return new Response('Server error', { status: 500 });
-  }
-}
-
-function detectDeviceType(userAgent: string): string {
-  if (/mobile/i.test(userAgent)) {
-    return 'mobile';
-  } else if (/tablet/i.test(userAgent)) {
-    return 'tablet';
-  } else {
-    return 'desktop';
   }
 }
 
@@ -997,100 +967,6 @@ async function fetchCampaign(env: Env, campaignId: string | number): Promise<{ i
     logError(error instanceof Error ? error.message : String(error));
     return null;
   }
-}
-
-/**
- * Fetch eligible campaigns based on zone targeting
- * Uses KV storage to fetch active campaigns that match the provided zone ID
- */
-async function fetchEligibleCampaigns(env: Env, zoneId: string): Promise<CampaignDetail[]> {
-  try {
-    // Validate zone ID
-    const zoneIdNum = parseAndValidateId(zoneId, 'zone');
-    if (zoneIdNum === null) {
-      logError(`Invalid zone ID: ${zoneId}`);
-      return [];
-    }
-
-    // Fetch campaigns from KV
-    const campaignsJson = await env.campaigns_zones.get('campaigns');
-    if (!campaignsJson) {
-      return [];
-    }
-    
-    // Parse campaigns JSON
-    interface CampaignData {
-      id: number;
-      name: string;
-      redirect_url: string;
-      status: string;
-      start_date?: number;
-      end_date?: number;
-      targeting_rules: Array<{
-        targeting_rule_type_id: number;
-        targeting_method: string;
-        rule: string;
-      }>;
-      [key: string]: unknown;
-    }
-    
-    const campaigns = JSON.parse(campaignsJson) as CampaignData[];
-    const now = Math.floor(Date.now() / 1000);
-    
-    // Filter campaigns
-    const eligibleCampaigns = campaigns.filter(campaign => {
-      // Filter by date range - status check removed as only active campaigns are stored in KV
-      if (campaign.start_date && campaign.start_date > now) {
-        return false;
-      }
-      
-      if (campaign.end_date && campaign.end_date < now) {
-        return false;
-      }
-      
-      // Check if campaign targets this zone
-      return campaign.targeting_rules.some(rule => {
-        if (rule.targeting_rule_type_id !== 4 || rule.targeting_method !== 'whitelist') {
-          return false;
-        }
-        
-        // Check if zone ID is in the targeting rule
-        const zoneIds = rule.rule.split(',').map(id => parseInt(id.trim(), 10));
-        return zoneIds.includes(zoneIdNum);
-      });
-    });
-    
-    // Map to CampaignDetail format
-    return eligibleCampaigns.map(campaign => {
-      // Type assertion for targeting rules to match CampaignDetail interface
-      const targetingRules = campaign.targeting_rules as unknown as import('../models/TargetingRule').TargetingRule[];
-      
-      return {
-        id: campaign.id,
-        name: campaign.name,
-        redirect_url: campaign.redirect_url,
-        status: campaign.status,
-        targeting_rules: targetingRules
-      };
-    });
-  } catch (error) {
-    logError(`Error fetching eligible campaigns for zone ${zoneId} from KV:`);
-    logError(error instanceof Error ? error.message : String(error));
-    return [];
-  }
-}
-
-/**
- * Select a campaign based on targeting rules and weights
- * Simplified for development - just returns the first campaign
- */
-function selectCampaign(campaigns: CampaignDetail[]): CampaignDetail | null {
-  // In development mode, just return the first campaign if any exist
-  if (campaigns.length > 0) {
-    // Using a definite type assertion
-    return campaigns[0] as CampaignDetail;
-  }
-  return null;
 }
 
 /**
