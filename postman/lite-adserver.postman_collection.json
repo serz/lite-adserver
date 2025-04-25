@@ -332,6 +332,69 @@
         "description": "Endpoints for managing advertising campaigns."
       },
       {
+        "name": "Campaign Targeting Rules",
+        "item": [
+          {
+            "name": "List Campaign Targeting Rules",
+            "request": {
+              "method": "GET",
+              "header": [],
+              "url": {
+                "raw": "{{base_url}}/api/campaigns/{{test_campaign_id}}/targeting_rules",
+                "host": [
+                  "{{base_url}}"
+                ],
+                "path": [
+                  "api",
+                  "campaigns",
+                  "{{test_campaign_id}}",
+                  "targeting_rules"
+                ]
+              },
+              "description": "Retrieves all targeting rules associated with a specific campaign. Use the ID from 'Create Test Campaign' or specify manually."
+            },
+            "response": []
+          },
+          {
+            "name": "Sync Campaign Targeting Rules",
+            "request": {
+              "method": "POST",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "type": "text"
+                }
+              ],
+              "body": {
+                "mode": "raw",
+                "raw": "[\n  {\n    \"id\": 2, \"targeting_rule_type_id\": 1, \"targeting_method\": \"blacklist\", \"rule\": \"GB\"\n  },\n  {\n    \"targeting_rule_type_id\": 2, \"targeting_method\": \"whitelist\", \"rule\": \"desktop\"\n  }\n]",
+                "options": {
+                  "raw": {
+                    "language": "json"
+                  }
+                }
+              },
+              "url": {
+                "raw": "{{base_url}}/api/campaigns/{{test_campaign_id}}/targeting_rules",
+                "host": [
+                  "{{base_url}}"
+                ],
+                "path": [
+                  "api",
+                  "campaigns",
+                  "{{test_campaign_id}}",
+                  "targeting_rules"
+                ]
+              },
+              "description": "Synchronizes targeting rules for a campaign. Provide the full desired set of rules. Include 'id' for existing rules to update, omit 'id' for new rules. Rules not in the list will be deleted."
+            },
+            "response": []
+          }
+        ],
+        "description": "Endpoints for managing targeting rules within a specific campaign."
+      },
+      {
         "name": "Targeting Rule Types",
         "item": [
           {
