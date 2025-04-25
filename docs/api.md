@@ -306,6 +306,140 @@ curl -X DELETE \
 
 **Response**: 204 No Content
 
+### List Campaign Targeting Rules
+
+Retrieves all targeting rules associated with a specific campaign.
+
+**Endpoint**: `GET /api/campaigns/:id/targeting_rules`
+
+**Authentication**: Required
+
+**URL Parameters**:
+
+| Parameter | Type    | Description      |
+|-----------|---------|------------------|
+| id        | integer | Campaign ID      |
+
+**Example Request**:
+
+```bash
+curl -H "Authorization: Bearer your-api-key-here" \
+  "https://your-api-url.com/api/campaigns/1/targeting_rules"
+```
+
+**Example Response**:
+
+```json
+{
+  "targeting_rules": [
+    {
+      "id": 1,
+      "campaign_id": 1,
+      "targeting_rule_type_id": 4,
+      "targeting_method": "whitelist",
+      "rule": "1,2,3",
+      "created_at": 1657152000000,
+      "updated_at": 1657152000000
+    },
+    {
+      "id": 2,
+      "campaign_id": 1,
+      "targeting_rule_type_id": 1,
+      "targeting_method": "whitelist",
+      "rule": "US,CA",
+      "created_at": 1657152000000,
+      "updated_at": 1657152000000
+    }
+  ]
+}
+```
+
+### Update Campaign Targeting Rules
+
+Updates the targeting rules for a specific campaign. Send the complete desired set of rules. The API will determine which rules to create, update, or delete.
+
+**Endpoint**: `POST /api/campaigns/:id/targeting_rules`
+
+**Authentication**: Required
+
+**URL Parameters**:
+
+| Parameter | Type    | Description      |
+|-----------|---------|------------------|
+| id        | integer | Campaign ID      |
+
+**Request Body**: An array of targeting rule objects. 
+
+- To update an existing rule, include its `id`.
+- To create a new rule, omit the `id` or set it to `null`.
+- Any rules currently associated with the campaign but *not* included in the request body will be deleted.
+
+```json
+[
+  {
+    "id": 2, // Existing rule: update targeting_method and rule
+    "targeting_rule_type_id": 1,
+    "targeting_method": "blacklist",
+    "rule": "GB"
+  },
+  {
+    // New rule: id is omitted
+    "targeting_rule_type_id": 2,
+    "targeting_method": "whitelist",
+    "rule": "desktop"
+  }
+]
+```
+
+**Example Request**:
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer your-api-key-here" \
+  -H "Content-Type: application/json" \
+  -d '[
+    {
+      "id": 2,
+      "targeting_rule_type_id": 1,
+      "targeting_method": "blacklist",
+      "rule": "GB"
+    },
+    {
+      "targeting_rule_type_id": 2,
+      "targeting_method": "whitelist",
+      "rule": "desktop"
+    }
+  ]' \
+  "https://your-api-url.com/api/campaigns/1/targeting_rules"
+```
+
+**Example Response**: The updated list of targeting rules for the campaign.
+
+```json
+{
+  "targeting_rules": [
+    {
+      "id": 2,
+      "campaign_id": 1,
+      "targeting_rule_type_id": 1,
+      "targeting_method": "blacklist",
+      "rule": "GB",
+      "created_at": 1657152000000, // original create time
+      "updated_at": 1678886401000  // updated time
+    },
+    {
+      "id": 3, // New ID assigned by DB
+      "campaign_id": 1,
+      "targeting_rule_type_id": 2,
+      "targeting_method": "whitelist",
+      "rule": "desktop",
+      "created_at": 1678886401000, // created time
+      "updated_at": 1678886401000  // updated time
+    }
+  ]
+}
+```
+
 ## Targeting Rule Types API
 
 The Targeting Rule Types API allows you to retrieve information about all available targeting rule types.

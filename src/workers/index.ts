@@ -17,7 +17,8 @@ import {
   DbCampaign, 
   CampaignUpdateData, 
   ZoneUpdateData, 
-  CreateCampaignRequestData 
+  CreateCampaignRequestData,
+  TargetingRuleData
 } from '../models/interfaces';
 // Re-export the CounterDO class needed by the Durable Object binding in wrangler.toml
 export { CounterDO };
@@ -156,6 +157,21 @@ async function handleCampaignApiRequests(request: Request, env: Env): Promise<Re
   const path = url.pathname.endsWith('/') ? url.pathname.slice(0, -1) : url.pathname;
   const pathParts = path.split('/');
   
+  // Routing logic based on path structure and method
+  const isTargetingRuleRequest = pathParts.length === 5 && pathParts[2] === 'campaigns' && pathParts[4] === 'targeting_rules';
+
+  // GET /api/campaigns/{campaign_id}/targeting_rules - List rules for a campaign
+  if (isTargetingRuleRequest && request.method === 'GET') {
+    const campaignId = pathParts[3];
+    return await listCampaignTargetingRules(campaignId, env);
+  }
+
+  // POST /api/campaigns/{campaign_id}/targeting_rules - Sync rules for a campaign
+  if (isTargetingRuleRequest && request.method === 'POST') {
+    const campaignId = pathParts[3];
+    return await syncCampaignTargetingRules(campaignId, request, env);
+  }
+
   // GET /api/campaigns - List all campaigns
   if (path === '/api/campaigns' && request.method === 'GET') {
     return await listCampaigns(request, env);
@@ -1975,6 +1991,219 @@ async function flushDatabase(env: Env): Promise<Response> {
       error: 'Server error flushing database',
       details: error instanceof Error ? error.message : String(error)
     }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+/**
+ * List targeting rules for a specific campaign
+ */
+async function listCampaignTargetingRules(campaignId: string | undefined, env: Env): Promise<Response> {
+  try {
+    // Validate ID
+    if (campaignId === undefined) {
+      return new Response(JSON.stringify({ error: 'Campaign ID is required in the path' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    const id = parseAndValidateId(campaignId, 'campaign');
+    if (id === null) {
+      return new Response(JSON.stringify({ error: 'Invalid campaign ID' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Query targeting rules for this campaign
+    const rulesResult = await env.DB.prepare(`
+      SELECT * FROM targeting_rules WHERE campaign_id = ? ORDER BY id ASC
+    `).bind(id).all();
+
+    if (rulesResult.error) {
+      throw new Error(`Database error fetching targeting rules: ${rulesResult.error}`);
+    }
+
+    return new Response(JSON.stringify({ targeting_rules: rulesResult.results ?? [] }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+  } catch (error) {
+    logError('Error listing campaign targeting rules:');
+    logError(error instanceof Error ? error.message : String(error));
+    return new Response(JSON.stringify({ error: 'Server error listing targeting rules' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+/**
+ * Synchronize targeting rules for a specific campaign (create, update, delete)
+ */
+async function syncCampaignTargetingRules(campaignId: string | undefined, request: Request, env: Env): Promise<Response> {
+  try {
+    // Validate Campaign ID
+    if (campaignId === undefined) {
+      return new Response(JSON.stringify({ error: 'Campaign ID is required in the path' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    const id = parseAndValidateId(campaignId, 'campaign');
+    if (id === null) {
+      return new Response(JSON.stringify({ error: 'Invalid campaign ID' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Check if campaign exists
+    const campaignExists = await env.DB.prepare(`SELECT id FROM campaigns WHERE id = ?`).bind(id).first('id');
+    if (!campaignExists) {
+       return new Response(JSON.stringify({ error: 'Campaign not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Parse request body - expected to be an array of targeting rule objects
+    // Rules with an 'id' are existing, rules without 'id' (or null/undefined) are new.
+    let incomingRules: TargetingRuleData[];
+    try {
+      incomingRules = await request.json() as TargetingRuleData[];
+      if (!Array.isArray(incomingRules)) {
+        throw new Error('Request body must be an array of targeting rules.');
+      }
+    } catch (e) {
+       return new Response(JSON.stringify({ error: `Invalid request body: ${e instanceof Error ? e.message : 'Unknown error'}` }), {
+        status: 400, headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // --- Synchronization Logic ---
+
+    // 1. Fetch current rules from DB
+    const currentRulesResult = await env.DB.prepare(`
+      SELECT * FROM targeting_rules WHERE campaign_id = ?
+    `).bind(id).all<TargetingRuleData>();
+
+    if (currentRulesResult.error) {
+      throw new Error(`Database error fetching current rules: ${currentRulesResult.error}`);
+    }
+    const currentRules = currentRulesResult.results ?? [];
+    const currentRuleMap = new Map(currentRules.map(rule => [rule.id, rule]));
+
+    // 2. Prepare D1 Batched Statements
+    const statements: D1PreparedStatement[] = [];
+    const incomingRuleIds = new Set<number>();
+    const now = Date.now(); // Use consistent timestamp for updates/creates
+
+    for (const rule of incomingRules) {
+      // Validate incoming rule data (basic validation)
+      if (!rule.targeting_rule_type_id || !rule.targeting_method || !rule.rule) {
+         return new Response(JSON.stringify({ error: 'Invalid rule data: missing required fields (targeting_rule_type_id, targeting_method, rule)', rule }), {
+          status: 400, headers: { 'Content-Type': 'application/json' }
+        });
+      }
+       if (!['whitelist', 'blacklist'].includes(rule.targeting_method)) {
+         return new Response(JSON.stringify({ error: 'Invalid targeting_method, must be "whitelist" or "blacklist"', rule }), {
+          status: 400, headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+
+      if (rule.id !== undefined && rule.id !== null) {
+        // --- Potential Update ---
+        const numericRuleId = Number(rule.id); // Ensure it's a number
+        if (isNaN(numericRuleId)) {
+          // Handle cases where rule.id is present but not a valid number (edge case)
+          return new Response(JSON.stringify({ error: `Invalid rule ID format: ${rule.id}` }), {
+            status: 400, headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        incomingRuleIds.add(numericRuleId); // Add the definite number
+        const currentRule = currentRuleMap.get(numericRuleId);
+        if (currentRule) {
+          // Check if an update is actually needed
+          if (currentRule.targeting_rule_type_id !== rule.targeting_rule_type_id ||
+              currentRule.targeting_method !== rule.targeting_method ||
+              currentRule.rule !== rule.rule) {
+            statements.push(env.DB.prepare(`
+              UPDATE targeting_rules
+              SET targeting_rule_type_id = ?, targeting_method = ?, rule = ?, updated_at = ?
+              WHERE id = ? AND campaign_id = ?
+            `).bind(rule.targeting_rule_type_id, rule.targeting_method, rule.rule, now, numericRuleId, id));
+          }
+        } else {
+          // ID provided but doesn't exist in DB for this campaign - treat as error or ignore? Let's error for now.
+           return new Response(JSON.stringify({ error: `Rule with ID ${numericRuleId} not found for campaign ${id}` }), {
+            status: 400, headers: { 'Content-Type': 'application/json' }
+          });
+        }
+      } else {
+        // --- Create ---
+        statements.push(env.DB.prepare(`
+          INSERT INTO targeting_rules (campaign_id, targeting_rule_type_id, targeting_method, rule, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).bind(id, rule.targeting_rule_type_id, rule.targeting_method, rule.rule, now, now));
+      }
+    }
+
+    // 3. Determine Deletes
+    for (const currentRule of currentRules) {
+      // Explicitly check id is defined, even though it should be from DB
+      if (currentRule.id !== undefined && !incomingRuleIds.has(currentRule.id)) { 
+        statements.push(env.DB.prepare(`
+          DELETE FROM targeting_rules WHERE id = ? AND campaign_id = ?
+        `).bind(currentRule.id, id));
+      }
+    }
+
+    // 4. Execute Batch Transaction
+    if (statements.length > 0) {
+      const batchResult = await env.DB.batch(statements);
+      // Note: D1 batch results might need more specific error checking depending on library version/behavior
+      for (const result of batchResult) {
+        if (result.error) {
+           throw new Error(`Batch transaction error: ${result.error}`);
+        }
+      }
+      logMessage(`Synchronized ${statements.length} rule operations for campaign ${id}`);
+
+       // Also update the campaign's updated_at timestamp
+       await env.DB.prepare(`UPDATE campaigns SET updated_at = ? WHERE id = ?`).bind(now, id).run();
+
+    } else {
+        logMessage(`No rule changes detected for campaign ${id}`);
+    }
+
+
+    // 5. Fetch and return the final state of the rules
+    const finalRulesResult = await env.DB.prepare(`
+      SELECT * FROM targeting_rules WHERE campaign_id = ? ORDER BY id ASC
+    `).bind(id).all();
+
+     if (finalRulesResult.error) {
+      // Log error but maybe still return success if batch succeeded? Or rollback?
+      // For simplicity, we'll return an error here.
+      logError(`Error fetching final rules after sync for campaign ${id}: ${finalRulesResult.error}`);
+       return new Response(JSON.stringify({ error: 'Server error retrieving rules after update' }), {
+        status: 500, headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    return new Response(JSON.stringify({ targeting_rules: finalRulesResult.results ?? [] }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+  } catch (error) {
+    logError('Error syncing campaign targeting rules:');
+    logError(error instanceof Error ? error.message : String(error));
+     // Consider more specific error codes based on the exception type if needed
+    return new Response(JSON.stringify({ error: 'Server error syncing targeting rules' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
     });
