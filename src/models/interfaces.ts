@@ -88,4 +88,17 @@ export interface CreateCampaignRequestData {
     rule: string;
   }>;
   [key: string]: unknown;
+}
+
+/**
+ * Data representation for a targeting rule in API requests/responses
+ */
+export interface TargetingRuleData {
+  id?: number; // Optional for creation
+  campaign_id: number; // Usually derived from path param, not in body
+  targeting_rule_type_id: number;
+  targeting_method: TargetingMethod;
+  rule: string;
+  created_at?: number; // Added by server
+  updated_at?: number; // Added by server
 } 
