@@ -4,8 +4,8 @@
  */
 
 import { Env, CampaignDetail } from '../models/interfaces';
-import { TargetingRule, TARGETING_RULE_TYPES, parseGeoRule, parseDeviceTypeRule, parseZoneIdRule } from '../models/TargetingRule';
-import { detectDeviceType } from '../utils/deviceDetection';
+import { TargetingRule, TARGETING_RULE_TYPES, parseGeoRule, parseDeviceTypeRule, parseZoneIdRule, parseOsRule, parseBrowserRule } from '../models/TargetingRule';
+import { detectDeviceType, detectBrowser, detectOS } from '../utils/deviceDetection';
 import { parseAndValidateId } from '../utils/idValidation';
 
 /**
@@ -30,8 +30,11 @@ export async function selectEligibleCampaign(
 ): Promise<CampaignDetail | null> {
   try {
     // Extract targeting context from request
+    const userAgent = request.headers.get('User-Agent') ?? '';
     const country = request.headers.get('CF-IPCountry') ?? '';
-    const deviceType = detectDeviceType(request.headers.get('User-Agent') ?? '');
+    const deviceType = detectDeviceType(userAgent);
+    const os = detectOS(userAgent);
+    const browser = detectBrowser(userAgent);
 
     // Validate zone ID
     const zoneIdNum = parseAndValidateId(zoneId, 'zone');
@@ -64,7 +67,7 @@ export async function selectEligibleCampaign(
     
     // Find the first eligible campaign
     for (const campaign of campaigns) {
-      if (isEligibleForAllRules(campaign, zoneIdNum, country, deviceType)) {
+      if (isEligibleForAllRules(campaign, zoneIdNum, country, deviceType, os, browser)) {
         // Convert to CampaignDetail format
         const targetingRules = campaign.targeting_rules as unknown as TargetingRule[];
         
@@ -99,7 +102,9 @@ function isEligibleForAllRules(
   },
   zoneId: number,
   country: string,
-  deviceType: string
+  deviceType: string,
+  os: string,
+  browser: string
 ): boolean {
   // Group targeting rules by type
   const rulesByType = new Map<number, Array<{ 
@@ -132,6 +137,18 @@ function isEligibleForAllRules(
   // Check device type targeting rules
   const deviceRules = rulesByType.get(TARGETING_RULE_TYPES.DEVICE_TYPE) ?? [];
   if (!passesDeviceTargeting(deviceRules, deviceType)) {
+    return false;
+  }
+  
+  // Check OS targeting rules
+  const osRules = rulesByType.get(TARGETING_RULE_TYPES.OS) ?? [];
+  if (!passesOsTargeting(osRules, os)) {
+    return false;
+  }
+  
+  // Check browser targeting rules
+  const browserRules = rulesByType.get(TARGETING_RULE_TYPES.BROWSER) ?? [];
+  if (!passesBrowserTargeting(browserRules, browser)) {
     return false;
   }
   
@@ -213,6 +230,64 @@ function passesDeviceTargeting(
   for (const rule of deviceRules) {
     const deviceTypes = parseDeviceTypeRule(rule.rule);
     const isInList = deviceTypes.includes(deviceType);
+    
+    if (rule.targeting_method === 'whitelist' && !isInList) {
+      return false;
+    }
+    
+    if (rule.targeting_method === 'blacklist' && isInList) {
+      return false;
+    }
+  }
+  
+  return true;
+}
+
+/**
+ * Check if the OS passes targeting rules
+ */
+function passesOsTargeting(
+  osRules: Array<{ targeting_method: string; rule: string }>,
+  os: string
+): boolean {
+  // If no rules exist, default behavior is to allow
+  if (osRules.length === 0) {
+    return true;
+  }
+  
+  // Check each rule
+  for (const rule of osRules) {
+    const osList = parseOsRule(rule.rule);
+    const isInList = osList.includes(os);
+    
+    if (rule.targeting_method === 'whitelist' && !isInList) {
+      return false;
+    }
+    
+    if (rule.targeting_method === 'blacklist' && isInList) {
+      return false;
+    }
+  }
+  
+  return true;
+}
+
+/**
+ * Check if the browser passes targeting rules
+ */
+function passesBrowserTargeting(
+  browserRules: Array<{ targeting_method: string; rule: string }>,
+  browser: string
+): boolean {
+  // If no rules exist, default behavior is to allow
+  if (browserRules.length === 0) {
+    return true;
+  }
+  
+  // Check each rule
+  for (const rule of browserRules) {
+    const browsers = parseBrowserRule(rule.rule);
+    const isInList = browsers.includes(browser);
     
     if (rule.targeting_method === 'whitelist' && !isInList) {
       return false;

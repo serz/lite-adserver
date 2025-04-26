@@ -11,7 +11,7 @@ import { handleSyncApiRequests } from '../services/syncService';
 import { hasValidAuthorization } from '../utils/auth';
 import { applySecurityHeaders } from '../utils/securityHeaders';
 import { selectEligibleCampaign } from '../services/campaignSelectionService';
-import { detectDeviceType } from '../utils/deviceDetection';
+import { detectDeviceType, detectBrowser, detectOS } from '../utils/deviceDetection';
 import { 
   Env, 
   DbCampaign, 
@@ -1045,31 +1045,9 @@ async function recordClick(db: D1Database, clickData: {
     let os = null;
     
     if (clickData.user_agent) {
-      // Simple browser detection
-      if (clickData.user_agent.includes('Chrome')) {
-        browser = 'Chrome';
-      } else if (clickData.user_agent.includes('Firefox')) {
-        browser = 'Firefox';
-      } else if (clickData.user_agent.includes('Safari')) {
-        browser = 'Safari';
-      } else if (clickData.user_agent.includes('Edge')) {
-        browser = 'Edge';
-      } else if (clickData.user_agent.includes('MSIE') || clickData.user_agent.includes('Trident/')) {
-        browser = 'Internet Explorer';
-      }
-      
-      // Simple OS detection
-      if (clickData.user_agent.includes('Windows')) {
-        os = 'Windows';
-      } else if (clickData.user_agent.includes('Mac OS')) {
-        os = 'macOS';
-      } else if (clickData.user_agent.includes('Linux')) {
-        os = 'Linux';
-      } else if (clickData.user_agent.includes('Android')) {
-        os = 'Android';
-      } else if (clickData.user_agent.includes('iOS') || clickData.user_agent.includes('iPhone') || clickData.user_agent.includes('iPad')) {
-        os = 'iOS';
-      }
+      // Use utility functions for consistent detection
+      browser = detectBrowser(clickData.user_agent);
+      os = detectOS(clickData.user_agent);
     }
     
     await db.prepare(`

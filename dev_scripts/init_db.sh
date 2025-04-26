@@ -55,6 +55,7 @@ sleep 5
 # Run migrations
 echo "Running database migrations..."
 wrangler d1 execute lite_adserver_db --local --file="migrations/0000_initial_schema.sql"
+wrangler d1 execute lite_adserver_db --local --file="migrations/0001_add_targeting_rule_types.sql"
 MIGRATION_RESULT=$?
 
 # Stop wrangler dev
