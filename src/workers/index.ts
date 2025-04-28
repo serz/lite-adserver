@@ -39,9 +39,48 @@ function logWarning(message: string): void {
   console.warn(message);
 }
 
+/**
+ * Handle /ping debug endpoint
+ */
+function handlePing(request: Request): Response {
+  const url = new URL(request.url);
+  const headers: Record<string, string> = {};
+  request.headers.forEach((value, key) => {
+    headers[key] = value;
+  });
+  const query: Record<string, string> = {};
+  for (const [key, value] of url.searchParams.entries()) {
+    query[key] = value;
+  }
+  const country = request.headers.get('CF-IPCountry') ?? '';
+  const userAgent = request.headers.get('User-Agent') ?? '';
+  const device_type = detectDeviceType(userAgent);
+  const os = detectOS(userAgent);
+  const browser = detectBrowser(userAgent);
+  return new Response(
+    JSON.stringify({
+      headers,
+      query,
+      country,
+      device_type,
+      os,
+      browser
+    }, null, 2),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    }
+  );
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    
+    // Handle /ping debug endpoint
+    if (url.pathname === '/ping') {
+      return handlePing(request);
+    }
     
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {
