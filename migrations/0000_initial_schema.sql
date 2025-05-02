@@ -1,6 +1,7 @@
 -- Campaign table
 CREATE TABLE IF NOT EXISTS campaigns (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  namespace TEXT NOT NULL,
   name TEXT NOT NULL,
   redirect_url TEXT,
   start_date INTEGER,
@@ -12,7 +13,8 @@ CREATE TABLE IF NOT EXISTS campaigns (
 
 -- Zone table (ad placement)
 CREATE TABLE IF NOT EXISTS zones (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id TEXT PRIMARY KEY,            -- UUIDv7
+  namespace TEXT NOT NULL,
   name TEXT NOT NULL,
   site_url TEXT,
   traffic_back_url TEXT,
@@ -24,6 +26,7 @@ CREATE TABLE IF NOT EXISTS zones (
 -- Targeting rule types
 CREATE TABLE IF NOT EXISTS targeting_rule_types (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  namespace TEXT NOT NULL,
   name TEXT NOT NULL,
   description TEXT,
   created_at INTEGER NOT NULL DEFAULT (unixepoch())
@@ -40,6 +43,7 @@ VALUES
 -- Targeting rules
 CREATE TABLE IF NOT EXISTS targeting_rules (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  namespace TEXT NOT NULL,
   campaign_id INTEGER NOT NULL,
   targeting_rule_type_id INTEGER NOT NULL,
   targeting_method TEXT CHECK(targeting_method IN ('whitelist', 'blacklist')) NOT NULL,
@@ -53,6 +57,7 @@ CREATE TABLE IF NOT EXISTS targeting_rules (
 -- Unified ad events table
 CREATE TABLE IF NOT EXISTS ad_events (
   id BIGINT PRIMARY KEY,                        -- Snowflake ID
+  namespace TEXT NOT NULL,
   sub_id TEXT,                                  -- Additional identifier
   event_type TEXT NOT NULL,                     -- 'impression', 'click', 'conversion', etc.
   event_time INTEGER NOT NULL DEFAULT (unixepoch()), -- Unix timestamp
