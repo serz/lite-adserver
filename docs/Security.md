@@ -2,6 +2,60 @@
 
 This document provides detailed information about the security features and CORS configuration implemented in the Lite Ad Server.
 
+## Authentication and Authorization
+
+### Multi-tenant API Access
+
+The Lite Ad Server implements a multi-tenant authentication system that uses API keys to control access to resources.
+
+#### API Key Structure
+
+API keys are structured as follows:
+- `token`: A unique identifier for the API key (e.g., UUID format)
+- `namespace`: The tenant or namespace this key belongs to
+- `created_at`: Timestamp of when the key was created
+- `expires_at`: Optional timestamp for key expiration
+- `permissions`: Array of permission strings (e.g., ["read", "write"])
+
+#### API Key Storage
+
+API keys are stored in KV with the following structure:
+- Key: `api_key:{token}`
+- Value: JSON object containing namespace, timestamps, and permissions
+
+### Managing API Keys
+
+The API provides endpoints to manage API keys. These endpoints are restricted to admin users only and require the system's main API key for authentication.
+
+#### Admin Authentication
+
+To access the API key management endpoints, use:
+```
+Authorization: Bearer YOUR_ADMIN_API_KEY
+```
+
+Where `YOUR_ADMIN_API_KEY` matches the value set in the `API_KEY` environment variable.
+
+#### List API Keys
+```
+GET /api/api-keys
+```
+
+This endpoint returns all available API keys.
+
+#### Create API Key
+```
+POST /api/api-keys
+```
+
+This endpoint creates a new API key. Required fields:
+- `token`: Unique token for the API key
+- `namespace`: The namespace/tenant for this key
+- `permissions`: Array of permission strings
+- `expires_at`: Optional expiration timestamp
+
+The server automatically sets the `created_at` timestamp.
+
 ## Security Headers
 
 The Lite Ad Server implements a comprehensive set of security headers to protect against common web vulnerabilities:

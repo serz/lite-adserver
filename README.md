@@ -49,18 +49,22 @@ GET /track/click/:campaignId/:zoneId
 
 ### Admin API
 
-The Admin API provides endpoints for campaign and zone management through Cloudflare Workers. All API endpoints require authentication using an API key in the `Authorization` header (Bearer token format).
+The Admin API provides endpoints for campaign and zone management through Cloudflare Workers. All API endpoints require authentication using an API key in the `Authorization` header (Bearer token format) and a namespace in the `X-Namespace` header.
 
 ```
 Authorization: Bearer your-api-key-here
+X-Namespace: your-namespace
 ```
 
 Available API endpoints:
 
+- **API Keys**: `/api/api-keys` - Manage API keys for multi-tenant access
 - **Campaigns**: `/api/campaigns` - Manage ad campaigns
 - **Targeting Rule Types**: `/api/targeting-rule-types` - Get information about targeting rules
 - **Zones**: `/api/zones` - Manage ad placement zones
 - **Statistics**: `/api/stats` - View performance metrics
+
+The system supports multi-tenant access control through API keys, where each key is associated with a specific namespace, granting access only to resources within that namespace.
 
 For detailed API documentation, see [API Documentation](docs/api.md).
 

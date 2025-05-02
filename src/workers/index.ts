@@ -200,6 +200,18 @@ async function handleApiKeyRequests(request: Request, env: Env): Promise<Respons
   const url = new URL(request.url);
   const path = url.pathname.endsWith('/') ? url.pathname.slice(0, -1) : url.pathname;
   
+  // Check if request has admin authorization
+  const authHeader = request.headers.get('Authorization');
+  const isAdmin = authHeader && authHeader.startsWith('Bearer ') && 
+                 authHeader.substring(7) === env.API_KEY;
+                 
+  if (!isAdmin) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+  
   // GET /api/api-keys - List all API keys
   if (path === '/api/api-keys' && request.method === 'GET') {
     return await listApiKeys(request, env);

@@ -16,7 +16,7 @@ This document describes the Lite Ad Server API endpoints, authentication, and us
 
 ## Authentication
 
-All API requests require authentication using an API key. 
+All API requests require authentication using an API key. The Lite Ad Server implements a multi-tenant authentication system.
 
 ### API Key Authentication
 
@@ -26,17 +26,97 @@ Include your API key in the `Authorization` header of all requests using the Bea
 Authorization: Bearer YOUR_API_KEY
 ```
 
+And include your namespace in the `X-Namespace` header:
+
+```
+X-Namespace: YOUR_NAMESPACE
+```
+
 Example with curl:
 
 ```bash
-curl -H "Authorization: Bearer your-api-key-here" https://your-api-url.com/api/campaigns
+curl -H "Authorization: Bearer your-api-key-here" -H "X-Namespace: your-namespace" https://your-api-url.com/api/campaigns
 ```
 
-The API key can be configured in your wrangler.toml file:
+The API will validate that the token exists and that it is authorized for the specified namespace.
 
-```toml
-[vars]
-API_KEY = "your-api-key-here"
+### API Keys Management
+
+The following endpoints are protected and require admin-level authentication using the API_KEY environment variable.
+
+#### List API Keys
+
+Retrieves all available API keys.
+
+**Endpoint**: `GET /api/api-keys`
+
+**Authentication**: Admin only - Bearer token must match the API_KEY environment variable
+
+**Example Request**:
+
+```bash
+curl -H "Authorization: Bearer your-admin-api-key-here" \
+  "https://your-api-url.com/api/api-keys"
+```
+
+**Example Response**:
+
+```json
+[
+  {
+    "token": "test-uuidv4-123456",
+    "namespace": "demo",
+    "created_at": 1714589060000,
+    "expires_at": 1717181060000,
+    "permissions": ["read", "write"]
+  },
+  {
+    "token": "test-uuidv4-789012",
+    "namespace": "customer1",
+    "created_at": 1714589060000,
+    "permissions": ["read"]
+  }
+]
+```
+
+#### Create API Key
+
+Creates a new API key.
+
+**Endpoint**: `POST /api/api-keys`
+
+**Authentication**: Admin only - Bearer token must match the API_KEY environment variable
+
+**Request Body**:
+
+```json
+{
+  "token": "test-uuidv4-123456",
+  "namespace": "demo",
+  "expires_at": 1717181060000,
+  "permissions": ["read", "write"]
+}
+```
+
+**Example Request**:
+
+```bash
+curl -X POST -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-admin-api-key-here" \
+  -d '{"token":"test-uuidv4-123456","namespace":"demo","expires_at":1717181060000,"permissions":["read","write"]}' \
+  "https://your-api-url.com/api/api-keys"
+```
+
+**Example Response**:
+
+```json
+{
+  "token": "test-uuidv4-123456",
+  "namespace": "demo",
+  "created_at": 1714589060000,
+  "expires_at": 1717181060000,
+  "permissions": ["read", "write"]
+}
 ```
 
 ### Response Codes
