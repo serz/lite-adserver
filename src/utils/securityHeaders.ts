@@ -37,7 +37,7 @@ export function applySecurityHeaders(response: Response, request: Request, env: 
     if (allowedOrigins.includes(origin) || allowedOriginsStr === '') {
       headers.set('Access-Control-Allow-Origin', origin);
       headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-      headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Namespace');
       headers.set('Access-Control-Max-Age', '86400'); // 24 hours
     }
   }
