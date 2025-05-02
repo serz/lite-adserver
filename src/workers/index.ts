@@ -8,10 +8,11 @@ import { parseAndValidateId, parseId, isValidId } from '../utils/idValidation';
 import { generateSnowflakeId } from '../utils/snowflake';
 import { replaceMacros } from '../utils/macros';
 import { handleSyncApiRequests } from '../services/syncService';
-import { hasValidAuthorization } from '../utils/auth';
+import { hasValidAuthorizationAsync } from '../utils/auth';
 import { applySecurityHeaders } from '../utils/securityHeaders';
 import { selectEligibleCampaign } from '../services/campaignSelectionService';
 import { detectDeviceType, detectBrowser, detectOS } from '../utils/deviceDetection';
+import { createApiKey, revokeApiKey, listApiKeys } from '../utils/apiKeyManager';
 import { 
   Env, 
   DbCampaign, 
@@ -139,8 +140,8 @@ async function handleApiRequest(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname;
   
-  // Check if the request has valid authorization
-  if (!hasValidAuthorization(request, env)) {
+  // Check if the request has valid authorization using async version
+  if (!(await hasValidAuthorizationAsync(request, env))) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' }
@@ -150,6 +151,11 @@ async function handleApiRequest(request: Request, env: Env): Promise<Response> {
   // Handle sync API requests
   if (path.startsWith('/api/sync')) {
     return await handleSyncApiRequests(request, env);
+  }
+  
+  // Handle API key management requests
+  if (path.startsWith('/api/api-keys')) {
+    return await handleApiKeyRequests(request, env);
   }
   
   // Handle other API requests
@@ -2226,3 +2232,124 @@ async function syncCampaignTargetingRules(campaignId: string | undefined, reques
     });
   }
 } 
+
+/**
+ * Handle API key management requests
+ */
+async function handleApiKeyRequests(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const path = url.pathname.endsWith('/') ? url.pathname.slice(0, -1) : url.pathname;
+  const pathParts = path.split('/');
+  
+  // Extract namespace from headers
+  const namespace = request.headers.get('X-Namespace');
+  if (!namespace) {
+    return new Response(JSON.stringify({ error: 'X-Namespace header is required' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+  
+  // POST /api/api-keys - Create a new API key
+  if (path === '/api/api-keys' && request.method === 'POST') {
+    try {
+      // Parse request body
+      const body = await request.json() as { 
+        permissions?: string[],
+        expires_in_days?: number
+      };
+      
+      // Create a new API key
+      const result = await createApiKey(
+        env, 
+        namespace, 
+        body.permissions, 
+        body.expires_in_days
+      );
+      
+      return new Response(JSON.stringify({
+        token: result.token,
+        created_at: result.details.created_at,
+        expires_at: result.details.expires_at,
+        permissions: result.details.permissions
+      }), {
+        status: 201,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } catch (error) {
+      return new Response(JSON.stringify({ 
+        error: 'Server error creating API key',
+        details: error instanceof Error ? error.message : String(error)
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  }
+  
+  // GET /api/api-keys - List API keys for namespace
+  if (path === '/api/api-keys' && request.method === 'GET') {
+    try {
+      const tokens = await listApiKeys(env, namespace);
+      
+      return new Response(JSON.stringify({ tokens }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } catch (error) {
+      return new Response(JSON.stringify({ 
+        error: 'Server error listing API keys',
+        details: error instanceof Error ? error.message : String(error)
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  }
+  
+  // DELETE /api/api-keys/:token - Revoke an API key
+  if (pathParts.length === 4 && pathParts[2] === 'api-keys' && request.method === 'DELETE') {
+    try {
+      const token = pathParts[3];
+      
+      if (!token) {
+        return new Response(JSON.stringify({ error: 'Token is required' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+      const success = await revokeApiKey(env, token);
+      
+      if (success) {
+        return new Response(JSON.stringify({ 
+          success: true,
+          message: 'API key revoked successfully'
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } else {
+        return new Response(JSON.stringify({ 
+          error: 'Failed to revoke API key'
+        }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    } catch (error) {
+      return new Response(JSON.stringify({ 
+        error: 'Server error revoking API key',
+        details: error instanceof Error ? error.message : String(error)
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  }
+  
+  return new Response(JSON.stringify({ error: 'API key endpoint not found' }), { 
+    status: 404,
+    headers: { 'Content-Type': 'application/json' } 
+  });
+}

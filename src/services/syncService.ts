@@ -1,6 +1,6 @@
 import type { KVNamespace } from '@cloudflare/workers-types';
 import { parseAndValidateId } from '../utils/idValidation';
-import { hasValidAuthorization } from '../utils/auth';
+import { hasValidAuthorizationAsync } from '../utils/auth';
 import type { Env } from '../models/interfaces';
 
 /**
@@ -50,8 +50,8 @@ export async function handleSyncApiRequests(request: Request, env: SyncEnv): Pro
   const path = url.pathname.endsWith('/') ? url.pathname.slice(0, -1) : url.pathname;
   const pathParts = path.split('/').filter(Boolean); // Remove empty strings
   
-  // Check if the request has valid authorization
-  if (!hasValidAuthorization(request, env)) {
+  // Check if the request has valid authorization using async version
+  if (!(await hasValidAuthorizationAsync(request, env))) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' }
