@@ -139,6 +139,11 @@ async function handleApiRequest(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname;
   
+  // Handle API keys management
+  if (path.startsWith('/api/api-keys')) {
+    return handleApiKeyRequests(request, env);
+  }
+  
   // Check if the request has valid authorization using async version
   if (!(await hasValidAuthorizationAsync(request, env))) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
@@ -183,6 +188,29 @@ async function handleApiRequest(request: Request, env: Env): Promise<Response> {
   }
   
   return new Response(JSON.stringify({ error: 'API endpoint not found' }), { 
+    status: 404,
+    headers: { 'Content-Type': 'application/json' } 
+  });
+}
+
+/**
+ * Handle API Key requests
+ */
+async function handleApiKeyRequests(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const path = url.pathname.endsWith('/') ? url.pathname.slice(0, -1) : url.pathname;
+  
+  // GET /api/api-keys - List all API keys
+  if (path === '/api/api-keys' && request.method === 'GET') {
+    return await listApiKeys(request, env);
+  }
+  
+  // POST /api/api-keys - Create a new API key
+  if (path === '/api/api-keys' && request.method === 'POST') {
+    return await createApiKey(request, env);
+  }
+  
+  return new Response(JSON.stringify({ error: 'API Key endpoint not found or method not allowed' }), { 
     status: 404,
     headers: { 'Content-Type': 'application/json' } 
   });
@@ -2226,3 +2254,108 @@ async function syncCampaignTargetingRules(campaignId: string | undefined, reques
     });
   }
 } 
+
+/**
+ * List all API keys
+ */
+async function listApiKeys(request: Request, env: Env): Promise<Response> {
+  try {
+    // Get all API keys from KV store - using list with prefix
+    const keyList = await env.campaigns_zones.list({ prefix: 'api_key:' });
+    
+    // Process the keys
+    const apiKeys = await Promise.all(
+      keyList.keys.map(async (key) => {
+        // Extract token from key
+        const token = key.name.substring(8); // Remove 'api_key:' prefix
+        
+        // Get the value
+        const apiKeyValue = await env.campaigns_zones.get(key.name, 'json') as Record<string, unknown>;
+        
+        if (!apiKeyValue) {
+          return null;
+        }
+        
+        // Format the response
+        return {
+          token,
+          namespace: apiKeyValue['namespace'],
+          created_at: apiKeyValue['created_at'],
+          expires_at: apiKeyValue['expires_at'],
+          permissions: apiKeyValue['permissions']
+        };
+      })
+    );
+    
+    // Filter out nulls
+    const validApiKeys = apiKeys.filter(key => key !== null);
+    
+    return new Response(JSON.stringify(validApiKeys), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: 'Failed to list API keys' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+/**
+ * Create a new API key
+ */
+async function createApiKey(request: Request, env: Env): Promise<Response> {
+  try {
+    // Parse request body
+    const data = await request.json() as {
+      token: string;
+      namespace: string;
+      expires_at?: number;
+      permissions: string[];
+    };
+    
+    // Validate required fields
+    if (!data.token || !data.namespace || !Array.isArray(data.permissions)) {
+      return new Response(JSON.stringify({ error: 'Missing required fields' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Set created_at automatically to current timestamp
+    const created_at = Date.now();
+    
+    // Create value to store in KV
+    const apiKeyValue: Record<string, unknown> = {
+      namespace: data.namespace,
+      created_at,
+      permissions: data.permissions
+    };
+    
+    // Add expires_at if provided
+    if (data.expires_at) {
+      apiKeyValue['expires_at'] = data.expires_at;
+    }
+    
+    // Store in KV
+    const key = `api_key:${data.token}`;
+    await env.campaigns_zones.put(key, JSON.stringify(apiKeyValue));
+    
+    return new Response(JSON.stringify({
+      token: data.token,
+      namespace: data.namespace,
+      created_at,
+      expires_at: data.expires_at,
+      permissions: data.permissions
+    }), {
+      status: 201,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: 'Failed to create API key' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
